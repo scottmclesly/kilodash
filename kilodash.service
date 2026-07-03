@@ -1,0 +1,21 @@
+[Unit]
+Description=kilodash touchscreen control panel
+After=network-online.target NetworkManager.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/kilodash
+ExecStart=/usr/bin/python3 /opt/kilodash/run.py
+Restart=always
+RestartSec=2
+# The app owns /dev/fb0 directly; keep systemd from wiring a tty to it.
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
+# Blank the console cursor so it can't blink over the UI.
+ExecStartPre=-/bin/sh -c 'echo 0 > /sys/class/graphics/fbcon/cursor_blink 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target

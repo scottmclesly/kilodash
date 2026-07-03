@@ -1,0 +1,87 @@
+"""Runtime settings, persisted to JSON so they survive reboots and can be
+hand-edited over SSH if the touch panel is ever mis-calibrated.
+
+Everything the Settings screen exposes lives here. Adding a new tunable is a
+one-line change to DEFAULTS; the Settings screen renders whatever it finds.
+"""
+
+import copy
+import json
+import os
+
+CONFIG_PATH = os.environ.get("KILODASH_CONFIG", "/opt/kilodash/config.json")
+
+# Each key maps to a spec the Settings screen knows how to render:
+#   type: "bool" | "int" | "choice"
+#   for int:    min, max, step, unit
+#   for choice: options list
+DEFAULTS = {
+    # --- touch mapping (defaults target the rotate=90 panel orientation) ---
+    "touch_swap_xy": {"value": True,  "type": "bool",
+                      "label": "Touch swap X/Y", "group": "Touch"},
+    "touch_invert_x": {"value": False, "type": "bool",
+                       "label": "Touch invert X", "group": "Touch"},
+    "touch_invert_y": {"value": False, "type": "bool",
+                       "label": "Touch invert Y", "group": "Touch"},
+
+    # --- display ---
+    "flip_180": {"value": False, "type": "bool",
+                 "label": "Flip display 180 (software)", "group": "Display"},
+    "dim_enabled": {"value": True, "type": "bool",
+                    "label": "Screen dimming", "group": "Display"},
+    "dim_timeout_sec": {"value": 600, "type": "int", "min": 30, "max": 1800,
+                        "step": 30, "unit": "s",
+                        "label": "Dim after", "group": "Display"},
+    "dim_level": {"value": 8, "type": "int", "min": 0, "max": 60, "step": 4,
+                  "unit": "%", "label": "Dim brightness", "group": "Display"},
+
+    # --- behaviour ---
+    "poll_sec": {"value": 3, "type": "int", "min": 1, "max": 30, "step": 1,
+                 "unit": "s", "label": "Status refresh", "group": "System"},
+    "theme": {"value": "dark", "type": "choice",
+              "options": ["dark", "midnight", "amber"],
+              "label": "Theme", "group": "System"},
+    "show_clock": {"value": True, "type": "bool",
+                   "label": "Show clock", "group": "System"},
+}
+
+
+class Config:
+    def __init__(self, path=CONFIG_PATH):
+        self.path = path
+        self.specs = copy.deepcopy(DEFAULTS)
+        self.load()
+
+    def load(self):
+        try:
+            with open(self.path) as f:
+                saved = json.load(f)
+            for k, v in saved.items():
+                if k in self.specs:
+                    self.specs[k]["value"] = v
+        except (OSError, ValueError):
+            pass
+
+    def save(self):
+        data = {k: s["value"] for k, s in self.specs.items()}
+        try:
+            tmp = self.path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(data, f, indent=2)
+            os.replace(tmp, self.path)
+        except OSError:
+            pass
+
+    def __getitem__(self, key):
+        return self.specs[key]["value"]
+
+    def set(self, key, value):
+        self.specs[key]["value"] = value
+        self.save()
+
+    def groups(self):
+        """Ordered {group_name: [(key, spec), ...]} for the Settings screen."""
+        out = {}
+        for k, s in self.specs.items():
+            out.setdefault(s.get("group", "Other"), []).append((k, s))
+        return out
