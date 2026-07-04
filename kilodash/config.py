@@ -45,6 +45,10 @@ DEFAULTS = {
               "label": "Theme", "group": "System"},
     "show_clock": {"value": True, "type": "bool",
                    "label": "Show clock", "group": "System"},
+
+    # --- app panels (not shown in Settings; edited from their own screens) ---
+    "ais_own_mmsi": {"value": "", "type": "hidden",
+                     "label": "Own AIS MMSI", "group": "System"},
 }
 
 

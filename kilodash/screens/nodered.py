@@ -1,0 +1,110 @@
+"""Node-RED launch panel.
+
+Launches Node-RED (systemd `nodered.service`, or the `node-red` binary), confirms
+its editor is serving on :1880, and shows the URL to open it from a laptop.
+
+Custom panel: **4 feedback fields** + **4 trigger buttons** you wire to your own
+flow. The contract kilodash speaks (all on the Pi, so localhost):
+
+  Feedback  GET  http://127.0.0.1:1880/kilodash/state
+            → {"fields": [{"label": "Temp", "value": "21.4"},   # up to 4
+                          {"label": "Door", "value": "open"}, ...]}
+  Triggers  POST http://127.0.0.1:1880/kilodash/btn/1 .. /btn/4
+            → button label read from the same /state payload, if present:
+              {"buttons": [{"label": "Fan"}, ...]}
+
+Import the ready-made flow at setup/nodered-kilodash-flow.json and read
+setup/NODE-RED.md for the full wire-up guide (feedback fields come from flow
+context f1..f4). Until the flow exists, fields show "—" and buttons post
+harmlessly (404) — the panel still launches and confirms.
+"""
+
+from .. import theme as T, webapp
+from ..widgets import Button, rrect
+from .webapp_base import WebAppScreen
+
+BASE = "http://127.0.0.1:1880/kilodash"
+
+
+class NodeRedScreen(WebAppScreen):
+    title = "Node-RED"
+    tile_color_key = "bad"          # Node-RED's brand red reads well as a tile
+    app_name = "Node-RED"
+    port = 1880
+    service = "nodered.service"     # installed by kilodash; launched on demand
+    url_path = "/"
+
+    def __init__(self, app):
+        super().__init__(app)
+        self.fields = [{"label": f"Field {i + 1}", "value": "—"} for i in range(4)]
+        self.buttons = [{"label": f"Trigger {i + 1}"} for i in range(4)]
+        self._flash = {}            # btn index -> monotonic expiry for tap feedback
+
+    def poll_app(self):
+        if self.web.state != webapp.UP:
+            return False
+        data = webapp.http_json(f"{BASE}/state", timeout=1.0)
+        if not isinstance(data, dict):
+            return False
+        f = data.get("fields")
+        if isinstance(f, list) and f:
+            self.fields = [{"label": str(x.get("label", f"Field {i + 1}"))[:10],
+                            "value": str(x.get("value", "—"))[:9]}
+                           for i, x in enumerate(f[:4])]
+            while len(self.fields) < 4:
+                self.fields.append({"label": f"Field {len(self.fields) + 1}",
+                                    "value": "—"})
+        b = data.get("buttons")
+        if isinstance(b, list) and b:
+            for i in range(4):
+                if i < len(b) and isinstance(b[i], dict):
+                    self.buttons[i]["label"] = str(b[i].get("label",
+                                                            f"Trigger {i + 1}"))[:10]
+        return True
+
+    def draw_app(self, d, th, top):
+        w = self.app.w
+        gap = 8
+        cw = (w - 12 * 2 - gap) / 2
+
+        # 4 feedback fields (2x2)
+        d.text((14, top), "DEBUG FEEDBACK", font=T.font(11, bold=True),
+               fill=th.muted)
+        top += 18
+        fh = 46
+        for i, fld in enumerate(self.fields):
+            r, c = divmod(i, 2)
+            x0 = 12 + c * (cw + gap)
+            y0 = top + r * (fh + gap)
+            rrect(d, (x0, y0, x0 + cw, y0 + fh), 9, fill=th.card)
+            d.text((x0 + 10, y0 + 6), fld["label"], font=T.font(11), fill=th.muted)
+            d.text((x0 + 10, y0 + 21), fld["value"],
+                   font=T.font(18, bold=True, mono=True), fill=th.accent)
+
+        # 4 trigger buttons (2x2)
+        top += 2 * (fh + gap) + 6
+        d.text((14, top), "TRIGGERS", font=T.font(11, bold=True), fill=th.muted)
+        top += 18
+        bh = 44
+        self._btns = {k: v for k, v in self._btns.items() if k == "power"}
+        for i, btn in enumerate(self.buttons):
+            r, c = divmod(i, 2)
+            x0 = 12 + c * (cw + gap)
+            y0 = top + r * (bh + gap)
+            kind = "primary" if self.web.state == webapp.UP else "normal"
+            b = Button((x0, y0, x0 + cw, y0 + bh), btn["label"], kind=kind,
+                       font_size=15)
+            b.enabled = self.web.state == webapp.UP
+            b.draw(d, th)
+            self._btns[f"btn{i}"] = b
+
+    def handle_app_tap(self, x, y):
+        for i in range(4):
+            b = self._btns.get(f"btn{i}")
+            if b and b.hit(x, y):
+                code = webapp.http_post(f"{BASE}/btn/{i + 1}", timeout=1.5)
+                ok = code is not None and int(code) < 400
+                self.app.toast(f"{self.buttons[i]['label']}: "
+                               f"{'sent' if ok else 'no handler'}")
+                return True
+        return False

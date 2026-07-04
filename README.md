@@ -88,6 +88,7 @@ kilodash/
   framebuffer.py        /dev/fb0 pack + blit (RGB565 / XRGB8888)
   touch.py              ADS7846 evdev reader + axis mapping
   system.py             network / wifi / lan / health data (+ background Task)
+  webapp.py             launch/confirm/supervise third-party web apps (Phase 4)
   widgets.py            Button, on-screen Keyboard, helpers
   theme.py              palettes + font cache
   config.py             settings schema + JSON persistence
@@ -98,7 +99,33 @@ legacy/                 the fbdash.py / kilo_dash.py prototypes this grew from
 Adding a screen: subclass `screens.base.Screen`, implement `draw_content` and
 `handle_tap`, and add it to `screens/__init__.py::SCREENS`.
 
+## Web-app launch terminal
+
+Beyond the built-in screens, kilodash also fronts **bigger packages that serve
+their own browser UI**. Opening one of these screens *launches the app*, waits
+until its port actually answers (a real "✓ web UI confirmed", not just
+"spawned"), and shows the **URL:port** to open the full interface from a phone or
+laptop — plus a compact native panel of controls and live feedback.
+
+Shipped apps (tiles appear only when the app is installed):
+
+- **Kismet** — launches the server, confirms `:2501`, a Sniff on/off toggle that
+  adds the ALFA as an uplink-safe monitor source, and a live peer list
+  colour-coded by device type.
+- **Node-RED** — confirms the `:1880` editor and gives **4 assignable feedback
+  fields + 4 trigger buttons** wired to your own flow. Import
+  [`setup/nodered-kilodash-flow.json`](setup/nodered-kilodash-flow.json) and see
+  [`setup/NODE-RED.md`](setup/NODE-RED.md) for the wire-up guide.
+- **AIS** — AIS-catcher on the RTL-SDR for live vessel/message feedback (RX), plus
+  an own-MMSI field and a hardware-gated Transmit-test control for bench-checking
+  a robot's AIS receiver (TX needs a HackRF/Pluto + `ais-simulator`).
+
+The framework lives in `kilodash/webapp.py` (a `WebApp` process/port supervisor
++ stdlib HTTP helpers) and `screens/webapp_base.py` (`WebAppScreen`). To add
+another web app, subclass `WebAppScreen`, set `app_name`/`port`/`service` (or
+`start_cmd`), and override the `draw_app`/`handle_app_tap`/`poll_app` hooks.
+
 ## Roadmap
 
-Phase 2/3 (Kali pentest tooling, RTL-SDR, ALFA Wi-Fi adapter) is planned in
-[ROADMAP.md](ROADMAP.md).
+Phase 2/3 (Kali pentest tooling, RTL-SDR, ALFA Wi-Fi adapter) and Phase 4 (the
+web-app launch terminal above) are tracked in [ROADMAP.md](ROADMAP.md).

@@ -60,7 +60,8 @@ class LauncherScreen(Screen):
 
     def _visible(self):
         return [s for s in self.app.screens[1:]
-                if s.device_key is None or self.app.devices.has(s.device_key)]
+                if (s.device_key is None or self.app.devices.has(s.device_key))
+                and s.available()]
 
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h

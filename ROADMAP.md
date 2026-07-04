@@ -118,3 +118,69 @@ D1 service toggles → D2 GPS (unlocks wardriving maps) → D3 log viewer.
 A1 + A2 (monitor toggle + live airodump) on top of the new `Service` manager and
 the safety gate. That’s the smallest change that makes the ALFA useful and
 exercises every framework piece the rest of Phase 3 reuses.
+
+---
+
+## Phase 4 — Web-app launch terminal  🟡 in progress
+
+Beyond the built-in scanners, kilodash also fronts *bigger packages that ship
+their own browser UI*. Opening one of these screens **launches the app**, waits
+for it to actually answer, and shows the **URL:port** to open the full UI from a
+phone/laptop — plus a compact native panel of app-specific controls + feedback.
+
+### Framework (built) — `webapp.py` + `screens/webapp_base.py`
+- **`WebApp`** (`kilodash/webapp.py`): supervises one app. Launch via a systemd
+  unit *or* a `Popen` argv; **positive confirmation is a TCP probe of the port**
+  (green only once it truly answers, not just "spawned"). `launch()` first probes
+  and *adopts* an already-running instance instead of duplicating it. State
+  machine: `stopped → starting → up → error`, with process-exit and ready-timeout
+  detection. Also stdlib-only HTTP helpers (`http_json`/`http_post`) so screens
+  can read their app's REST/JSON endpoints — first HTTP code in the project.
+- **`WebAppScreen`** base: auto-launch on open, the status banner + URL card +
+  Start/Stop, and hooks (`build_start_cmd`, `poll_app`, `draw_app`,
+  `handle_app_tap`). Tiles **auto-hide until the app is installed** via a new
+  `Screen.available()` gate (launcher `_visible()` now checks it too).
+
+### Apps (this pass)
+| App | Port | Backend | Panel | Status |
+|---|---|---|---|---|
+| **Kismet** | 2501 | `kismet --no-ncurses` | Sniff on/off (adds ALFA as uplink-safe monitor source + uplink watchdog); live peer list colour-coded by device type via REST | installed on box ✅ |
+| **Node-RED** | 1880 | `nodered.service` | 4 assignable debug feedback fields + 4 trigger buttons over an HTTP contract | **installed ✅** (node v24 via apt, node-red via npm, systemd unit, verified serving :1880 in ~3s) |
+| **AIS** | 8100 | `AIS-catcher -N 8100` (RX) + `ais-simulator` (TX) | vessel/msg feedback; own-MMSI field; gated Transmit-test toggle | **not packaged** — no apt/npm build; source compile blocked pending explicit user OK |
+
+### Integration contracts / notes (define per app as we go)
+- **Kismet peers**: reads `/devices/views/all/last-time/-30/devices.json` with the
+  credentials Kismet auto-writes to `~/.kismet/kismet_httpd.conf`. **Needs Kismet's
+  one-time web login done first**; until then the panel shows a hint and the full
+  list stays in the web UI. Colour: AP=accent, client=ok, BT=warn. *On-hardware
+  TODO: confirm the exact device-summary endpoint/fields on this Kismet build.*
+- **Node-RED**: kilodash speaks a tiny contract you wire in a flow —
+  `GET /kilodash/state → {fields:[{label,value}×4], buttons:[{label}×4]}` and
+  `POST /kilodash/btn/1..4`. Feedback fields read flow context `f1..f4` (labels
+  `f1_label..`), so any node feeds a field by writing that key. **Wire-up guide:
+  `setup/NODE-RED.md`; import `setup/nodered-kilodash-flow.json`** (ships a live
+  demo). Until the flow exists, fields show "—" and buttons post harmlessly.
+- **AIS RX**: AIS-catcher web UI; vessel count from `/geojson` features, rate from
+  `/stat.json` (best-effort key match). Install: build AIS-catcher, gate is the
+  `AIS-catcher`/`ais-catcher` binary + RTL-SDR present.
+- **AIS TX (bench receiver testing)**: purpose is proving a **robot's AIS receiver**
+  decodes frames — contained indoor test, minimal power into a small/dummy antenna,
+  never reaching real AIS traffic. **The RTL-SDR is RX-only** (same wall as the SDR
+  replay caveat in PHASE2), so TX needs TX-capable SDR hardware — **HackRF One**
+  (best fit), PlutoSDR, or LimeSDR — plus a frame generator (`ais-simulator`,
+  GNU Radio + gr-osmosdr). The screen already has the **own-MMSI field** (persisted
+  in `config.ais_own_mmsi`) and a **Transmit-test toggle**; it stays disabled until
+  `_tx_ready()` sees both the tool and a TX radio, and every transmit is **armed**
+  (tap-to-arm, tap-again-to-fire). *TODO once HackRF is on the box: finalise the
+  `TX_CMD` invocation (seed MMSI/position) and surface ais-simulator's own web UI.*
+
+### Candidate next web apps
+Grafana/Prometheus (Pi telemetry dashboards), `dump1090-fa` (ADS-B map UI on
+:8080 — pairs with the SDR), Cockpit (system admin on :9090), Portainer/Uptime
+Kuma, `gqrx`-headless / OpenWebRX (browser SDR waterfall).
+
+### Install / packaging TODO
+- `setup/install-phase4.sh`: node-red, AIS-catcher, dump1090-fa, and (optional,
+  for TX) HackRF host tools + ais-simulator + GNU Radio; udev rules for HackRF.
+- Consider persisting per-app settings (ports, Node-RED field/button labels) in
+  `config.json` like `ais_own_mmsi`.

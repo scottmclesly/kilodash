@@ -1,0 +1,18 @@
+[Unit]
+Description=Node-RED graphical flow editor (kilodash-managed)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=scott
+Group=scott
+WorkingDirectory=/home/scott
+Environment=NODE_OPTIONS=--max-old-space-size=512
+ExecStart=/usr/local/bin/node-red --userDir /home/scott/.node-red
+Restart=on-failure
+RestartSec=3
+SyslogIdentifier=node-red
+
+[Install]
+WantedBy=multi-user.target

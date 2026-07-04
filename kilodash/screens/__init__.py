@@ -11,6 +11,9 @@ from .wifisniff import WifiSniffScreen
 from .canbus import CanScreen
 from .i2cscan import I2cScreen
 from .serialmon import SerialScreen
+from .kismet import KismetScreen
+from .nodered import NodeRedScreen
+from .aiscatcher import AisCatcherScreen
 from .health import HealthScreen
 from .settings import SettingsScreen
 
@@ -23,6 +26,9 @@ SCREENS = [
     CanScreen,           # device: can
     I2cScreen,           # device: i2c
     SerialScreen,        # device: serial
+    KismetScreen,        # web app: kismet (tile shows if installed)
+    NodeRedScreen,       # web app: node-red (tile shows if installed)
+    AisCatcherScreen,    # web app: ais-catcher (needs RTL-SDR + installed)
     HealthScreen,
     SettingsScreen,
 ]

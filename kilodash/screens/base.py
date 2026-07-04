@@ -24,6 +24,13 @@ class Screen:
         self._last_tick = 0.0
         self.tick_interval = 3.0
 
+    # ---- availability ----
+    def available(self):
+        """Whether this screen should be offered on the launcher right now.
+        Device screens also gate on `device_key`; web-app screens override this
+        to hide until their backing app is installed. Default: always shown."""
+        return True
+
     # ---- lifecycle ----
     def on_enter(self):
         pass
