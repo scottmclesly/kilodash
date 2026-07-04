@@ -22,11 +22,14 @@ the Wi-Fi screen. Home now holds up to 8+ tiles and reflows automatically.
 
 ## What's built now (stage 1 of each)
 
-### RTL-SDR — frequency scanner + capture  ✅
-[screens/sdr.py](kilodash/screens/sdr.py). Flipper-style: pick a band preset
-(433/315/868 ISM, FM, airband, ADS-B, 2m/70cm ham), **Scan** runs an `rtl_power`
-sweep and draws the live spectrum with a peak marker + readout, **Capture**
-records raw IQ around the peak to `/opt/kilodash/captures/*.cu8`.
+### RTL-SDR — scanner + signal identifier + capture  ✅
+[screens/sdr.py](kilodash/screens/sdr.py). Pick a band preset, then:
+- **Scan** — `rtl_power` sweep → spectrum + peak (where the energy is).
+- **Identify** — `rtl_433` tunes the band's ISM centre and *decodes real packets*,
+  naming the device (weather/temp sensor, TPMS, gate/car remote, doorbell…). Each
+  band also shows a knowledge hint for signals that can't be decoded (e.g. LoRa
+  needs a LoRa radio, not an RTL-SDR).
+- **Capture** — records raw IQ to `/opt/kilodash/captures/*.cu8`.
 
 > **Replay is not possible with the RTL-SDR — it's receive-only hardware.** A
 > Flipper can retransmit because it has a TX chip; the RTL2832U cannot transmit
@@ -36,11 +39,12 @@ records raw IQ around the peak to `/opt/kilodash/captures/*.cu8`.
 > is gated on adding one of those.
 
 ### ALFA — passive WiFi sniffer  ✅
-[screens/wifisniff.py](kilodash/screens/wifisniff.py). Puts `wlan1` in monitor
-mode (leaves the Pi's `wlan0` uplink untouched), channel-hops with `airodump-ng`,
-and lists every AP (SSID, channel, encryption tag, signal) and client (MAC,
-probe/associated BSSID, signal) it hears. Start/Stop; auto-restores managed mode
-on exit.
+[screens/wifisniff.py](kilodash/screens/wifisniff.py). Monitor-mode + `airodump-ng`
+channel hop on the *non-uplink* adapter, listing every AP (SSID, channel,
+encryption tag, signal) and client (MAC, probe/associated BSSID, signal) it hears.
+Passive only. **The internal WiFi stays connected**: it only ever touches the
+adapter without the default route, and a watchdog reconnects the uplink instantly
+if anything blips it (wlan0 and the ALFA are separate radios, so both run at once).
 
 ### CAN bus  ✅ (works when plugged)
 [screens/canbus.py](kilodash/screens/canbus.py). Bitrate picker, **Autodetect
@@ -69,15 +73,14 @@ read-only live view of a device's UART/debug output.
 
 **ALFA WiFi**
 - Kismet backend for richer device tracking + logging.
-- Per-frame protocol dissection via `tshark` (EAPOL, mDNS, WPS tags).
-- **Handshake / PMKID capture** and **deauth** — behind an "authorized use"
-  confirm gate (own networks / pentest only).
-- GPS dongle → wardriving with coordinates.
+- Per-frame protocol dissection via `tshark` (mDNS, WPS/IE tags, vendor OUIs).
+- Signal-strength meter for locating a specific device.
+- GPS dongle → map/log what's around (site survey).
 
-**CAN**
+**CAN** (robotics/vehicle bench work)
 - Live frame decode table + `cansniffer` grouped view.
 - DBC signal decoding; OBD-II PID dashboard (RPM, speed, temps).
-- **Frame replay / injection** behind the safety gate.
+- Send/replay frames for bring-up and testing your own buses.
 
 **I2C / buses**
 - Per-address register read/write and known-device probes.
@@ -100,12 +103,11 @@ read-only live view of a device's UART/debug output.
 - **nmap host detail** — tap a host on the LAN Scan screen → service/port scan.
 - **GPS** — pairs with wardriving and geotagging captures.
 
-## Safety gating (applies to the offensive stage-2/3 items)
+## Scope
 
-Deauth, WiFi injection, and CAN frame injection will sit behind a global
-**"authorized use" toggle + two-step confirm**, reused across every screen, so
-they can't be triggered by accident. Passive sniffing/scanning (everything built
-today) needs no gate.
+kilodash is bench/diagnostic tooling for robotics and hardware work: receive,
+scan, decode, log. No attack tooling (no deauth/injection). CAN send/replay in
+stage 3 is for bringing up and testing *your own* buses.
 
 ## Captures
 
