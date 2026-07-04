@@ -1,5 +1,20 @@
+# Python
 __pycache__/
 *.pyc
+
+# Per-device runtime state (not for version control)
 config.json
 *.bak
-captures/.scan.csv
+*.tmp
+
+# Generated captures, logs and sniffs — keep the folder, ignore its contents
+captures/*
+!captures/.gitkeep
+
+# Capture / log artefacts anywhere in the tree
+*.cu8
+*.iq
+*.pcap
+*.cap
+*.log
+*.kismet.netxml
