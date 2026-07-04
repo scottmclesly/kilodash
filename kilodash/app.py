@@ -18,6 +18,7 @@ from PIL import Image, ImageDraw, ImageEnhance
 
 from . import theme as T
 from .config import Config
+from .devices import Devices
 from .framebuffer import Framebuffer
 from .screens.calibrate import CalibrationScreen
 from .touch import Touch
@@ -36,6 +37,8 @@ class App:
         self.fb = Framebuffer()
         self.w, self.h = self.fb.w, self.fb.h
         self.touch = Touch(self.config, self.w, self.h)
+        self.devices = Devices()
+        self.devices.refresh(force=True)
         self.screens = [cls(self) for cls in screen_classes]
         self.launcher = self.screens[0]
         self.calibration = CalibrationScreen(self)
@@ -321,6 +324,13 @@ class App:
 
             self._read_keyboard_quit()
             self._update_dim()
+
+            # hotplug: if the device behind the current screen was unplugged,
+            # bail back to Home so we don't sit on a dead screen.
+            self.devices.refresh()
+            if self.current.device_key and \
+                    not self.devices.has(self.current.device_key):
+                self.go_home()
 
             if not self.dimmed and self.keyboard is None:
                 if self.current.maybe_tick():

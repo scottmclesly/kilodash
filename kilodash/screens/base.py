@@ -15,6 +15,7 @@ class Screen:
     title = "Screen"
     icon = ""
     scrollable = False
+    device_key = None          # set on hotplug screens; tile shows only if present
 
     def __init__(self, app):
         self.app = app
