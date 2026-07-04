@@ -6,24 +6,33 @@ from PIL import ImageFont
 
 FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 
+# Three CRT-inspired skins. Chrome is monochrome (one phosphor colour + its
+# shades); the traffic-light status colours (ok/warn/bad) are kept vivid across
+# all three so warnings always read. Blue channel is kept low in green/amber so
+# the phosphor reads true, not teal.
 PALETTES = {
-    "dark": {
-        "bg": (16, 18, 22), "card": (28, 32, 38), "card_hi": (38, 43, 51),
-        "fg": (223, 227, 231), "muted": (120, 128, 140),
-        "accent": (60, 170, 255), "ok": (40, 200, 120),
-        "warn": (240, 180, 60), "bad": (224, 70, 70), "ink": (10, 12, 14),
+    # Classic green phosphor / "Matrix": bright #33FF46, dim #008F11 on black.
+    "green": {
+        "bg": (0, 9, 3), "card": (3, 26, 10), "card_hi": (8, 46, 18),
+        "fg": (51, 245, 70), "muted": (0, 150, 40),
+        "accent": (130, 255, 120), "ok": (51, 235, 80),
+        "warn": (255, 190, 40), "bad": (255, 75, 60), "ink": (0, 9, 3),
     },
-    "midnight": {
-        "bg": (8, 10, 20), "card": (18, 22, 40), "card_hi": (28, 34, 58),
-        "fg": (210, 220, 240), "muted": (100, 112, 150),
-        "accent": (120, 130, 255), "ok": (60, 210, 160),
-        "warn": (240, 200, 90), "bad": (240, 90, 120), "ink": (6, 8, 16),
-    },
+    # P3 amber phosphor / Fallout Pip-Boy: #FFB641 on warm black.
     "amber": {
-        "bg": (18, 14, 8), "card": (34, 26, 14), "card_hi": (46, 36, 20),
-        "fg": (245, 224, 190), "muted": (150, 126, 90),
-        "accent": (255, 176, 60), "ok": (170, 210, 90),
-        "warn": (255, 200, 80), "bad": (240, 110, 70), "ink": (14, 10, 4),
+        "bg": (12, 6, 0), "card": (32, 19, 2), "card_hi": (52, 33, 6),
+        "fg": (255, 182, 66), "muted": (170, 112, 28),
+        "accent": (255, 214, 110), "ok": (150, 225, 90),
+        "warn": (255, 226, 90), "bad": (255, 96, 66), "ink": (12, 6, 0),
+    },
+    # Sterile clinical white. Chrome is greyscale (accent is a neutral dark
+    # slate, not a colour); only ok/warn/bad carry colour, for meaning alone.
+    "light": {
+        "bg": (238, 240, 243), "card": (255, 255, 255), "card_hi": (222, 226, 231),
+        "fg": (22, 26, 32), "muted": (120, 130, 142),
+        "accent": (44, 50, 60), "ok": (22, 160, 82),
+        "warn": (200, 140, 0), "bad": (208, 55, 48), "ink": (255, 255, 255),
+        "sterile": True,
     },
 }
 
@@ -47,12 +56,12 @@ def font(size, bold=False, mono=False):
 
 
 class Theme:
-    def __init__(self, name="dark"):
+    def __init__(self, name="green"):
         self.set(name)
 
     def set(self, name):
         self.name = name
-        self.c = PALETTES.get(name, PALETTES["dark"])
+        self.c = PALETTES.get(name, PALETTES["green"])
 
     def __getattr__(self, key):
         # theme.accent -> self.c["accent"]

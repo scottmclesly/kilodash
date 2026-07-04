@@ -17,6 +17,7 @@ def _bar(d, th, box, pct, color):
 
 class HealthScreen(Screen):
     title = "Pi Health"
+    tile_color_key = "warn"
     icon = ""
 
     def __init__(self, app):

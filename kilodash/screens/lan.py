@@ -13,6 +13,7 @@ ROW_H = 62
 
 class LanScreen(Screen):
     title = "LAN Scan"
+    tile_color_key = "accent"
     scrollable = True
 
     def __init__(self, app):

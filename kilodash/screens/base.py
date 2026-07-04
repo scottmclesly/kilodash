@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw
 
 from .. import theme as T
 
-HEADER_H = 40
+HEADER_H = 44
 
 
 class Screen:
@@ -76,24 +76,21 @@ class Screen:
     def _draw_header(self, d, th):
         w = self.app.w
         d.rectangle((0, 0, w, HEADER_H), fill=th.card)
-        title = (self.icon + "  " + self.title) if self.icon else self.title
-        d.text((12, 10), title, font=T.font(20, bold=True), fill=th.fg)
+        if self.app.is_launcher(self) or getattr(self, "capture_all_taps", False):
+            d.text((14, 11), self.title, font=T.font(22, bold=True), fill=th.fg)
+        else:
+            # Back button (hit-box lives in app.BACK_HIT)
+            d.text((10, 6), "‹", font=T.font(32, bold=True), fill=th.accent)
+            d.text((32, 13), "Back", font=T.font(17, bold=True), fill=th.accent)
+            f = T.font(19, bold=True)
+            tw = d.textlength(self.title, font=f)
+            d.text((w - tw - 14, 13), self.title, font=f, fill=th.fg)
+            return
         if self.app.config["show_clock"]:
             clk = time.strftime("%H:%M")
             f = T.font(18, bold=True)
             tw = d.textlength(clk, font=f)
-            d.text((w - tw - 12, 11), clk, font=f, fill=th.muted)
-        # page dots
-        n = len(self.app.screens)
-        idx = self.app.idx
-        dot = 6
-        gap = 8
-        total = n * dot + (n - 1) * gap
-        x = w / 2 - total / 2
-        for i in range(n):
-            col = th.accent if i == idx else th.card_hi
-            d.ellipse((x, HEADER_H - 8, x + dot, HEADER_H - 8 + dot), fill=col)
-            x += dot + gap
+            d.text((w - tw - 14, 13), clk, font=f, fill=th.muted)
 
     def draw_content(self, d, th):
         raise NotImplementedError

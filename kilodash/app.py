@@ -1,5 +1,10 @@
-"""Main application: screen manager, gesture recognition, swipe transitions,
-dimming/screensaver, and the modal keyboard overlay.
+"""Main application: a tap-driven launcher + screen router (no swipe nav),
+reliable ▲▼ scroll buttons for long lists, a screensaver dimmer, and the modal
+keyboard overlay.
+
+Navigation is deliberately all discrete taps: resistive touch (ADS7846) is too
+noisy to distinguish a horizontal swipe from a vertical drag reliably, so we
+don't try. Home is a tile grid; every other screen has a Back button.
 """
 
 import os
@@ -14,12 +19,14 @@ from PIL import Image, ImageDraw, ImageEnhance
 from . import theme as T
 from .config import Config
 from .framebuffer import Framebuffer
+from .screens.calibrate import CalibrationScreen
 from .touch import Touch
 
-# gesture thresholds (pixels)
-LOCK = 14           # movement before we commit to swipe vs scroll vs tap
-TAP_MAX_MOVE = 16
-PAGE_SNAP_FRAC = 0.30
+# Resistive touch is noisy. A gesture is a TAP unless the finger's net travel
+# from its settled landing point exceeds this; only then is it a scroll/drag.
+# One unified threshold removes the tap-vs-scroll ambiguity entirely.
+DRAG_SLOP = 30          # px of net travel that separates a tap from a drag
+BACK_HIT = (0, 0, 100, 46)
 
 
 class App:
@@ -30,50 +37,67 @@ class App:
         self.w, self.h = self.fb.w, self.fb.h
         self.touch = Touch(self.config, self.w, self.h)
         self.screens = [cls(self) for cls in screen_classes]
-        self.idx = 0
+        self.launcher = self.screens[0]
+        self.calibration = CalibrationScreen(self)
+        # Force calibration on first run (or after a config wipe).
+        self.current = (self.launcher if self.config["touch_calibrated"]
+                        else self.calibration)
         self.running = True
         self.dirty = True
 
-        # gesture state
-        self._g = None
-        self.drag_dx = 0        # live horizontal drag during a page swipe
-        self._anim = None       # (from_idx, to_idx, start_t, dur, from_dx)
+        self._g = None                  # in-progress gesture
+        self._up_btn = self._down_btn = None
 
-        # dimming
         self.last_activity = time.monotonic()
         self.dimmed = False
-
-        # modal keyboard
         self.keyboard = None
-
+        self._toast = None
         self.backlight = self._find_backlight()
-        self.screens[self.idx].on_enter()
 
-    # ---------------------------------------------------------------- backlight
+        self.current.on_enter()
+
+    # -------------------------------------------------------------- navigation
+    def is_launcher(self, scr):
+        return scr is self.launcher
+
+    def open_screen(self, scr):
+        if scr is self.current:
+            return
+        self.current.on_leave()
+        scr.scroll = 0
+        scr.on_enter()
+        self.current = scr
+        self.dirty = True
+
+    def go_home(self):
+        self.open_screen(self.launcher)
+
+    def open_calibration(self):
+        self.calibration.reset()
+        self.open_screen(self.calibration)
+
+    # -------------------------------------------------------------- backlight
     def _find_backlight(self):
         base = "/sys/class/backlight"
         try:
             for name in os.listdir(base):
-                p = os.path.join(base, name)
-                if os.path.exists(os.path.join(p, "brightness")):
-                    return p
+                if os.path.exists(os.path.join(base, name, "brightness")):
+                    return os.path.join(base, name)
         except OSError:
             pass
         return None
 
     def _set_backlight(self, pct):
         if not self.backlight:
-            return False
+            return
         try:
             mx = int(open(os.path.join(self.backlight, "max_brightness")).read())
-            val = max(0, min(mx, round(mx * pct / 100)))
             with open(os.path.join(self.backlight, "brightness"), "w") as f:
-                f.write(str(val))
-            return True
+                f.write(str(max(0, min(mx, round(mx * pct / 100)))))
         except OSError:
-            return False
+            pass
 
-    # ----------------------------------------------------------------- keyboard
+    # --------------------------------------------------------------- keyboard
     def open_keyboard(self, kb):
         self.keyboard = kb
         self.dirty = True
@@ -82,37 +106,19 @@ class App:
         self.keyboard = None
         self.dirty = True
 
-    # -------------------------------------------------------------------- toast
+    # ------------------------------------------------------------------ toast
     def toast(self, msg, secs=2.5):
         self._toast = (msg, time.monotonic() + secs)
         self.dirty = True
 
-    _toast = None
-
-    # ------------------------------------------------------------------ nav
-    def go_to(self, idx, animate=True):
-        idx = max(0, min(len(self.screens) - 1, idx))
-        if idx == self.idx:
-            self.drag_dx = 0
-            self.dirty = True
-            return
-        if animate:
-            self._anim = (self.idx, idx, time.monotonic(), 0.18, self.drag_dx)
-        self.screens[self.idx].on_leave()
-        self.screens[idx].on_enter()
-        self.idx = idx
-        self.drag_dx = 0
-        self.dirty = True
-
-    # -------------------------------------------------------------- activity
+    # -------------------------------------------------------------- dimming
     def _wake(self):
         self.last_activity = time.monotonic()
         if self.dimmed:
             self.dimmed = False
-            if self.backlight:
-                self._set_backlight(100)
+            self._set_backlight(100)
             self.dirty = True
-            return True    # consumed: this touch only wakes the screen
+            return True
         return False
 
     def _update_dim(self):
@@ -121,34 +127,57 @@ class App:
                 self.dimmed = False
                 self.dirty = True
             return
-        idle = time.monotonic() - self.last_activity
-        if not self.dimmed and idle >= self.config["dim_timeout_sec"]:
+        if not self.dimmed and \
+                time.monotonic() - self.last_activity >= self.config["dim_timeout_sec"]:
             self.dimmed = True
-            if self.backlight:
-                self._set_backlight(self.config["dim_level"])
+            self._set_backlight(self.config["dim_level"])
+            self.dirty = True
+
+    # ------------------------------------------------------ scroll-button geom
+    def _scroll_buttons(self):
+        """Return (up_rect, down_rect) if the current screen can scroll, else None."""
+        scr = self.current
+        if not getattr(scr, "scrollable", False):
+            return None
+        view_h = scr.content_area()[3]
+        if scr.content_h <= view_h:
+            return None
+        w, h = self.w, self.h
+        up = (w - 60, h - 124, w - 8, h - 70)
+        down = (w - 60, h - 64, w - 8, h - 10)
+        return up, down
+
+    def _scroll_page(self, direction):
+        scr = self.current
+        step = int(scr.content_area()[3] * 0.7)
+        if scr.scroll_by(direction * step):
             self.dirty = True
 
     # ------------------------------------------------------------- gestures
     def _on_down(self, x, y):
-        self._g = {"sx": x, "sy": y, "lx": x, "ly": y,
-                   "t": time.monotonic(), "mode": None}
+        # n counts move samples so we can discard the noisy touchdown sample.
+        self._g = {"sx": x, "sy": y, "lx": x, "ly": y, "n": 0, "scrolling": False}
 
     def _on_move(self, x, y):
         g = self._g
-        if not g:
+        if not g or self.keyboard is not None:
+            return
+        if getattr(self.current, "capture_all_taps", False):
+            return                       # calibration: never scroll
+        g["n"] += 1
+        if g["n"] == 1:
+            # Resistive panels report a bogus first position as the finger
+            # settles. Re-baseline the gesture start to this settled point.
+            g["sx"], g["sy"] = x, y
+            g["lx"], g["ly"] = x, y
             return
         dx, dy = x - g["sx"], y - g["sy"]
-        if g["mode"] is None:
-            if abs(dx) > LOCK and abs(dx) >= abs(dy):
-                g["mode"] = "h"
-            elif abs(dy) > LOCK and abs(dy) > abs(dx):
-                g["mode"] = "v"
-        if g["mode"] == "h" and self.keyboard is None:
-            self.drag_dx = dx
+        if not g["scrolling"] and (dx * dx + dy * dy) ** 0.5 > DRAG_SLOP \
+                and abs(dy) >= abs(dx):
+            g["scrolling"] = True
+            g["ly"] = y                  # avoid a jump when scrolling engages
+        if g["scrolling"] and self.current.scroll_by(g["ly"] - y):
             self.dirty = True
-        elif g["mode"] == "v":
-            if self.screens[self.idx].scroll_by(g["ly"] - y):
-                self.dirty = True
         g["lx"], g["ly"] = x, y
 
     def _on_up(self, x, y):
@@ -156,43 +185,51 @@ class App:
         self._g = None
         if not g:
             return
-        dx = x - g["sx"]
-        dy = y - g["sy"]
-        moved = abs(dx) + abs(dy)
         if self.keyboard is not None:
-            if moved <= TAP_MAX_MOVE:
-                self.keyboard.tap(x, y)
+            if abs(x - g["sx"]) + abs(y - g["sy"]) <= DRAG_SLOP:
+                self.keyboard.tap(g["lx"], g["ly"])
                 self.dirty = True
             return
-        if g["mode"] == "h":
-            if dx <= -self.w * PAGE_SNAP_FRAC:
-                self.go_to(self.idx + 1)
-            elif dx >= self.w * PAGE_SNAP_FRAC:
-                self.go_to(self.idx - 1)
-            else:
-                self.drag_dx = 0
+        if getattr(self.current, "capture_all_taps", False):
+            if self.current.handle_tap(x, y):
                 self.dirty = True
-        elif g["mode"] == "v":
-            pass    # scroll already applied
-        elif moved <= TAP_MAX_MOVE:
-            if self.screens[self.idx].handle_tap(x, y):
-                self.dirty = True
+            return
+        # Classify by NET displacement at release, not transient jitter.
+        dx, dy = x - g["sx"], y - g["sy"]
+        if not g["scrolling"] and (dx * dx + dy * dy) ** 0.5 <= DRAG_SLOP:
+            self._dispatch_tap(g["lx"], g["ly"])
+
+    def _dispatch_tap(self, x, y):
+        # Back button (every screen except the launcher)
+        if not self.is_launcher(self.current):
+            bx0, by0, bx1, by1 = BACK_HIT
+            if bx0 <= x <= bx1 and by0 <= y <= by1:
+                self.go_home()
+                return
+        # scroll buttons
+        btns = self._scroll_buttons()
+        if btns:
+            up, down = btns
+            if up[0] <= x <= up[2] and up[1] <= y <= up[3]:
+                self._scroll_page(-1)
+                return
+            if down[0] <= x <= down[2] and down[1] <= y <= down[3]:
+                self._scroll_page(+1)
+                return
+        # screen-specific
+        if self.current.handle_tap(x, y):
+            self.dirty = True
 
     # ------------------------------------------------------------- rendering
     def _compose(self):
         th = self.theme
         if self.keyboard is not None:
             img = Image.new("RGB", (self.w, self.h), th.bg)
-            d = ImageDraw.Draw(img)
-            self.keyboard.draw(d, th)
-        elif self._anim:
-            img = self._render_anim()
-        elif self.drag_dx:
-            img = self._render_drag(self.drag_dx)
+            self.keyboard.draw(ImageDraw.Draw(img), th)
         else:
-            img = self.screens[self.idx].render()
+            img = self.current.render()
+            self._draw_scroll_buttons(img)
 
-        # toast overlay
         if self._toast:
             msg, until = self._toast
             if time.monotonic() < until:
@@ -200,61 +237,50 @@ class App:
             else:
                 self._toast = None
 
-        # software 180 flip
         if self.config["flip_180"]:
             img = img.transpose(Image.ROTATE_180)
-
-        # dim overlay when no hardware backlight control is available
         if self.dimmed and not self.backlight:
             factor = max(0.05, self.config["dim_level"] / 100)
             img = ImageEnhance.Brightness(img).enhance(factor)
         return img
 
-    def _render_drag(self, dx):
+    def _draw_scroll_buttons(self, img):
+        btns = self._scroll_buttons()
+        if not btns:
+            return
         th = self.theme
-        img = Image.new("RGB", (self.w, self.h), th.bg)
-        cur = self.screens[self.idx].render()
-        img.paste(cur, (int(dx), 0))
-        neighbor = self.idx + (1 if dx < 0 else -1)
-        if 0 <= neighbor < len(self.screens):
-            nb = self.screens[neighbor].render()
-            off = int(dx + (self.w if dx < 0 else -self.w))
-            img.paste(nb, (off, 0))
-        return img
-
-    def _render_anim(self):
-        fr, to, t0, dur, from_dx = self._anim
-        p = (time.monotonic() - t0) / dur
-        if p >= 1.0:
-            self._anim = None
-            return self.screens[self.idx].render()
-        # ease out
-        p = 1 - (1 - p) ** 2
-        direction = 1 if to > fr else -1
-        start = from_dx
-        end = -direction * self.w
-        dx = start + (end - start) * p
-        th = self.theme
-        img = Image.new("RGB", (self.w, self.h), th.bg)
-        img.paste(self.screens[fr].render(), (int(dx), 0))
-        img.paste(self.screens[to].render(), (int(dx + direction * self.w), 0))
-        return img
+        d = ImageDraw.Draw(img)
+        scr = self.current
+        view_h = scr.content_area()[3]
+        max_scroll = max(1, scr.content_h - view_h)
+        frac = min(1.0, scr.scroll / max_scroll)
+        for rect, sym, active in (
+                (btns[0], "▲", scr.scroll > 0),
+                (btns[1], "▼", scr.scroll < max_scroll - 1)):
+            d.rounded_rectangle(rect, radius=12, fill=th.card_hi)
+            f = T.font(24, bold=True)
+            tw = d.textlength(sym, font=f)
+            cx = (rect[0] + rect[2]) / 2
+            cy = (rect[1] + rect[3]) / 2
+            d.text((cx - tw / 2, cy - 16), sym, font=f,
+                   fill=th.accent if active else th.muted)
+        # position hint between the buttons
+        d.text((btns[0][0] + 20, (btns[0][3] + btns[1][1]) / 2 - 7),
+               f"{int(frac * 100)}%", font=T.font(12, bold=True), fill=th.muted)
 
     def _draw_toast(self, img, msg):
         th = self.theme
         d = ImageDraw.Draw(img)
         f = T.font(16, bold=True)
         tw = d.textlength(msg, font=f)
-        pad = 14
-        bw = min(self.w - 20, tw + pad * 2)
+        bw = min(self.w - 20, tw + 28)
         x0 = (self.w - bw) / 2
-        y0 = self.h - 70
+        y0 = self.h - 76
         d.rounded_rectangle((x0, y0, x0 + bw, y0 + 40), radius=10, fill=th.card_hi)
         d.text((self.w / 2 - tw / 2, y0 + 11), msg, font=f, fill=th.fg)
 
     # ------------------------------------------------------------------- loop
     def _read_keyboard_quit(self):
-        """Allow ESC/q from a USB keyboard to quit during testing."""
         try:
             r, _, _ = select.select([sys.stdin], [], [], 0)
             if r:
@@ -284,10 +310,9 @@ class App:
         while self.running:
             for kind, x, y in self.touch.poll():
                 if kind == "down":
-                    if self._wake():          # first touch after dim only wakes
+                    if self._wake():
                         self._g = None
                         continue
-                    self._wake()
                     self._on_down(x, y)
                 elif kind == "move":
                     self._on_move(x, y)
@@ -297,14 +322,12 @@ class App:
             self._read_keyboard_quit()
             self._update_dim()
 
-            # periodic data refresh for the visible screen
             if not self.dimmed and self.keyboard is None:
-                if self.screens[self.idx].maybe_tick():
+                if self.current.maybe_tick():
                     self.dirty = True
 
-            animating = self._anim is not None
-            if self.dirty or animating:
+            if self.dirty:
                 self.fb.blit(self._compose())
                 self.dirty = False
 
-            time.sleep(0.02 if (animating or self.drag_dx or self._g) else 0.05)
+            time.sleep(0.02 if self._g else 0.05)

@@ -23,6 +23,8 @@ DEFAULTS = {
                        "label": "Touch invert X", "group": "Touch"},
     "touch_invert_y": {"value": False, "type": "bool",
                        "label": "Touch invert Y", "group": "Touch"},
+    "touch_calibrated": {"value": False, "type": "hidden",
+                         "label": "", "group": "Touch"},
 
     # --- display ---
     "flip_180": {"value": False, "type": "bool",
@@ -38,8 +40,8 @@ DEFAULTS = {
     # --- behaviour ---
     "poll_sec": {"value": 3, "type": "int", "min": 1, "max": 30, "step": 1,
                  "unit": "s", "label": "Status refresh", "group": "System"},
-    "theme": {"value": "dark", "type": "choice",
-              "options": ["dark", "midnight", "amber"],
+    "theme": {"value": "green", "type": "choice",
+              "options": ["green", "amber", "light"],
               "label": "Theme", "group": "System"},
     "show_clock": {"value": True, "type": "bool",
                    "label": "Show clock", "group": "System"},

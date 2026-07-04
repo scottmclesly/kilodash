@@ -14,6 +14,20 @@ except ImportError:  # pragma: no cover
     evdev = None
 
 
+def apply_map(u, v, swap, invx, invy, flip, w, h):
+    """Map raw-normalised (u,v) in [0,1] to screen pixels. Single source of
+    truth shared by the live reader and the calibration solver."""
+    if invx:
+        u = 1.0 - u
+    if invy:
+        v = 1.0 - v
+    if swap:
+        u, v = v, u
+    if flip:
+        u, v = 1.0 - u, 1.0 - v
+    return u * w, v * h
+
+
 def find_device():
     if evdev is None:
         return None
@@ -46,25 +60,24 @@ class Touch:
             self.dev.grab() if False else None  # leave ungrabbed; we poll
         self._x = self._y = 0
         self._down = False
+        self.last_raw = (0.0, 0.0)     # raw-normalised (u,v) of the last touch
 
     @property
     def available(self):
         return self.dev is not None
 
     def _map(self, rx, ry):
-        nx = (rx - self.xr[0]) / (self.xr[1] - self.xr[0])
-        ny = (ry - self.yr[0]) / (self.yr[1] - self.yr[0])
-        nx = min(max(nx, 0.0), 1.0)
-        ny = min(max(ny, 0.0), 1.0)
-        if self.cfg["touch_invert_x"]:
-            nx = 1.0 - nx
-        if self.cfg["touch_invert_y"]:
-            ny = 1.0 - ny
-        if self.cfg["touch_swap_xy"]:
-            nx, ny = ny, nx
-        if self.cfg["flip_180"]:
-            nx, ny = 1.0 - nx, 1.0 - ny
-        return nx * self.w, ny * self.h
+        u = (rx - self.xr[0]) / (self.xr[1] - self.xr[0])
+        v = (ry - self.yr[0]) / (self.yr[1] - self.yr[0])
+        u = min(max(u, 0.0), 1.0)
+        v = min(max(v, 0.0), 1.0)
+        self.last_raw = (u, v)
+        return apply_map(u, v,
+                         self.cfg["touch_swap_xy"],
+                         self.cfg["touch_invert_x"],
+                         self.cfg["touch_invert_y"],
+                         self.cfg["flip_180"],
+                         self.w, self.h)
 
     def poll(self):
         """Return a list of ('down'|'move'|'up', x, y) since last call."""

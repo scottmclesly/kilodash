@@ -14,8 +14,11 @@ RestartSec=2
 StandardInput=null
 StandardOutput=journal
 StandardError=journal
-# Blank the console cursor so it can't blink over the UI.
-ExecStartPre=-/bin/sh -c 'echo 0 > /sys/class/graphics/fbcon/cursor_blink 2>/dev/null || true'
+# The ILI9486 panel only scans out over SPI when its DRM pipe is enabled.
+# fbcon enables it — but only if the console is mapped onto fb0. Force that
+# here (survives even if the kernel cmdline maps the console elsewhere), then
+# blank the cursor. The short sleep lets the modeset settle before we draw.
+ExecStartPre=-/bin/sh -c 'con2fbmap 1 0; con2fbmap 2 0; echo 0 > /sys/class/graphics/fbcon/cursor_blink 2>/dev/null; echo 1 > /proc/sys/kernel/printk; sleep 0.4'
 
 [Install]
 WantedBy=multi-user.target

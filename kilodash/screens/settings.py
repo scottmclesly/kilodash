@@ -13,9 +13,14 @@ from .base import Screen, HEADER_H
 
 ROW_H = 58
 
+# Order the setting groups top-to-bottom. Anything not listed falls after these
+# (but before the Power actions). Touch sits last — it's rarely changed.
+GROUP_ORDER = ["System", "Display", "Touch"]
+
 
 class SettingsScreen(Screen):
     title = "Settings"
+    tile_color_key = "muted"
     scrollable = True
 
     def __init__(self, app):
@@ -52,10 +57,19 @@ class SettingsScreen(Screen):
 
         # build a tall surface; collect hitboxes in surface space then offset
         rows = []
-        for group, items in cfg.groups().items():
+        groups = sorted(cfg.groups().items(),
+                        key=lambda kv: (GROUP_ORDER.index(kv[0])
+                                        if kv[0] in GROUP_ORDER else len(GROUP_ORDER)))
+        for group, items in groups:
+            visible = [(k, s) for k, s in items if s.get("type") != "hidden"]
+            if not visible:
+                continue
             rows.append(("header", group, None))
-            for key, spec in items:
+            for key, spec in visible:
                 rows.append(("setting", key, spec))
+            if group == "Touch":
+                rows.append(("action", "Calibrate touch",
+                             lambda: self.app.open_calibration()))
         rows.append(("header", "Power", None))
         rows.append(("action", "Restart UI",
                      lambda: self._power(["sudo", "systemctl", "restart", "kilodash"])))
@@ -138,9 +152,11 @@ class SettingsScreen(Screen):
 
     def _draw_toggle(self, d, th, x, y, on):
         w_, h_ = 64, 30
-        rrect(d, (x, y, x + w_, y + h_), 15, fill=th.ok if on else th.card_hi)
+        # "on" uses the theme accent (not status-green) so it matches each skin
+        rrect(d, (x, y, x + w_, y + h_), 15, fill=th.accent if on else th.card_hi)
         kx = x + w_ - 27 if on else x + 3
-        d.ellipse((kx, y + 3, kx + 24, y + 27), fill=th.fg)
+        # dark knob on the bright "on" track, light knob on the dark "off" track
+        d.ellipse((kx, y + 3, kx + 24, y + 27), fill=th.ink if on else th.fg)
 
     def _stepper_box(self, d, th, x, y, sym):
         rrect(d, (x, y, x + 34, y + 32), 8, fill=th.card_hi)
