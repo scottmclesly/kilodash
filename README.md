@@ -219,3 +219,8 @@ Adding a screen: subclass `screens.base.Screen`, implement `draw_content` and
 Phase 2/3 (Kali pentest tooling, RTL-SDR, ALFA Wi-Fi adapter) and Phase 4 (the
 web-app launch terminal above) are tracked in [ROADMAP.md](ROADMAP.md) and
 [PHASE2.md](PHASE2.md).
+
+## License
+
+[MIT](LICENSE). Scottina is created by Scott McLeslie for the benefit of all
+living beings — feel free to share and contribute.

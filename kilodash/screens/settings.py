@@ -7,11 +7,13 @@ import subprocess
 
 from PIL import Image, ImageDraw
 
+from .. import __version__
 from .. import theme as T
 from ..widgets import rrect
 from .base import Screen, HEADER_H
 
 ROW_H = 58
+ABOUT_H = 118
 
 # Order the setting groups top-to-bottom. Anything not listed falls after these
 # (but before the Power actions). Touch sits last — it's rarely changed.
@@ -76,11 +78,14 @@ class SettingsScreen(Screen):
                      lambda: self._power(["sudo", "systemctl", "restart", "kilodash"])))
         rows.append(("action", "Reboot Pi", lambda: self._power(["sudo", "reboot"])))
         rows.append(("action", "Shutdown", lambda: self._power(["sudo", "poweroff"])))
+        rows.append(("header", "About", None))
+        rows.append(("about", None, None))
 
         # measure height
         surf_h = 0
         for kind, *_ in rows:
-            surf_h += 28 if kind == "header" else ROW_H
+            surf_h += (28 if kind == "header"
+                       else ABOUT_H if kind == "about" else ROW_H)
         surf_h = max(surf_h + 10, h - top)
         self.content_h = surf_h
 
@@ -93,6 +98,20 @@ class SettingsScreen(Screen):
                 sd.text((16, y + 6), a.upper(), font=T.font(13, bold=True),
                         fill=th.muted)
                 y += 28
+                continue
+            if kind == "about":
+                rrect(sd, (14, y, w - 14, y + ABOUT_H - 6), 10, fill=th.card)
+                sd.text((26, y + 12), f"Scottina v{__version__}",
+                        font=T.font(19, bold=True), fill=th.accent)
+                sd.text((26, y + 42),
+                        "Created by Scott McLeslie for the benefit",
+                        font=T.font(14), fill=th.fg)
+                sd.text((26, y + 62), "of all living beings.",
+                        font=T.font(14), fill=th.fg)
+                sd.text((26, y + 88),
+                        "MIT License · Feel free to share and contribute · 2026",
+                        font=T.font(12), fill=th.muted)
+                y += ABOUT_H
                 continue
             if kind == "action":
                 rrect(sd, (14, y, w - 14, y + ROW_H - 6), 10, fill=th.card)
