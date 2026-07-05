@@ -49,6 +49,8 @@ DEFAULTS = {
     # --- app panels (not shown in Settings; edited from their own screens) ---
     "ais_own_mmsi": {"value": "", "type": "hidden",
                      "label": "Own AIS MMSI", "group": "System"},
+    "signalk_token": {"value": "", "type": "hidden",
+                      "label": "Signal K access token", "group": "System"},
 }
 
 

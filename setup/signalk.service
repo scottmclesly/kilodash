@@ -1,0 +1,18 @@
+[Unit]
+Description=Signal K marine data server (kilodash-managed)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=scott
+Group=scott
+WorkingDirectory=/home/scott
+Environment=HOME=/home/scott
+ExecStart=/usr/local/bin/signalk-server
+Restart=on-failure
+RestartSec=5
+SyslogIdentifier=signalk
+
+[Install]
+WantedBy=multi-user.target

@@ -41,24 +41,26 @@ def probe(host, port, timeout=0.4):
 # App screens read their app's own REST/JSON endpoints for live feedback. Kept
 # to stdlib urllib (no requests dependency) and always best-effort: any failure
 # returns None so a screen degrades to "open the web UI" rather than crashing.
-def _auth_header(req, auth):
-    if auth:
+def _auth_header(req, auth, token=None):
+    if token:                                 # Bearer (e.g. Signal K JWT / device token)
+        req.add_header("Authorization", "Bearer " + token)
+    elif auth:                                # HTTP basic (user, pass)
         tok = base64.b64encode(f"{auth[0]}:{auth[1]}".encode()).decode()
         req.add_header("Authorization", "Basic " + tok)
 
 
-def http_get(url, timeout=1.5, auth=None):
+def http_get(url, timeout=1.5, auth=None, token=None):
     try:
         req = urllib.request.Request(url)
-        _auth_header(req, auth)
+        _auth_header(req, auth, token)
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.read()
     except Exception:                         # noqa: BLE001
         return None
 
 
-def http_json(url, timeout=1.5, auth=None):
-    raw = http_get(url, timeout=timeout, auth=auth)
+def http_json(url, timeout=1.5, auth=None, token=None):
+    raw = http_get(url, timeout=timeout, auth=auth, token=token)
     if raw is None:
         return None
     try:
