@@ -9,10 +9,11 @@ fronts your network, radio, bus, and web-app tooling as finger-sized tiles.
 
 ![screens](docs/screens.png)
 
-> **Name note:** the product is **Scottina**. The Python package, install path
-> (`/opt/kilodash`), and systemd unit keep the historical working name
-> `kilodash` on purpose — renaming them buys nothing and risks breaking the
-> service. Everything you *see* says Scottina.
+> **Name note:** the product is **Scottina**, hosted at
+> [github.com/scottmclesly/Scottina](https://github.com/scottmclesly/Scottina).
+> The Python package, install path (`/opt/kilodash`), and systemd unit keep the
+> historical working name `kilodash` on purpose — renaming them buys nothing
+> and risks breaking the service. Everything you *see* says Scottina.
 
 ## Why it works the way it does
 
