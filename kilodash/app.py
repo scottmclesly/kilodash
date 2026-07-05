@@ -29,8 +29,9 @@ from .touch import Touch
 DRAG_SLOP = 30          # px of net travel that separates a tap from a drag
 BACK_HIT = (0, 0, 100, 46)
 
-SPLASH_PATH = os.path.join(os.path.dirname(__file__), "..", "ScottinaSplash.png")
-SPLASH_SECS = 2.5       # minimum curtain time; a tap dismisses it early
+SPLASH_GIF = os.path.join(os.path.dirname(__file__), "..", "ScottinaSplash.gif")
+SPLASH_PNG = os.path.join(os.path.dirname(__file__), "..", "ScottinaSplash.png")
+SPLASH_SECS = 2.5       # PNG-fallback curtain time; the GIF plays through once
 
 
 class _FpsMeter:
@@ -125,31 +126,86 @@ class App:
         self._dirty_rects = list(rects) if rects is not None else None
 
     # ----------------------------------------------------------- boot curtain
-    def _show_splash(self):
-        """Put the Scottina splash up the moment we own the framebuffer, so
-        the boot gap reads as an intentional curtain; run() holds it for
-        SPLASH_SECS (tap to skip) before the first real frame."""
-        self._splash_until = 0.0
-        try:
-            art = Image.open(SPLASH_PATH).convert("RGB")
-        except (OSError, ValueError):
-            return
+    def _fit_splash(self, art, resample):
+        """Scale a splash frame to fit and center it on a black canvas."""
         scale = min(self.w / art.width, self.h / art.height)
         art = art.resize((round(art.width * scale), round(art.height * scale)),
-                         Image.LANCZOS)
+                         resample)
         img = Image.new("RGB", (self.w, self.h), (0, 0, 0))
         img.paste(art, ((self.w - art.width) // 2, (self.h - art.height) // 2))
         if self.config["flip_180"]:
             img = img.transpose(Image.ROTATE_180)
-        self.fb.blit(img)
+        return img
+
+    def _show_splash(self):
+        """Put the Scottina splash up the moment we own the framebuffer, so
+        the boot gap reads as an intentional curtain. With the animated GIF
+        present, only its first frame goes up here (keeps __init__ fast);
+        run() plays the rest through once — tap to skip — before the first
+        real frame. Without it, the PNG holds for SPLASH_SECS."""
+        self._splash_until = 0.0
+        self._splash_gif = None
+        try:
+            gif = Image.open(SPLASH_GIF)
+            self.fb.blit(self._fit_splash(gif.convert("RGB"), Image.BILINEAR))
+            self._splash_gif = gif
+            return
+        except (OSError, ValueError):
+            pass
+        try:
+            art = Image.open(SPLASH_PNG).convert("RGB")
+        except (OSError, ValueError):
+            return
+        self.fb.blit(self._fit_splash(art, Image.LANCZOS))
         self._splash_until = time.monotonic() + SPLASH_SECS
 
     def _hold_splash(self):
+        if self._splash_gif is not None:
+            self._play_splash_gif()
+            return
         while self.running and time.monotonic() < self._splash_until:
             if any(kind == "down" for kind, _x, _y in self.touch.poll()):
                 return                   # tap lifts the curtain early
             self._read_keyboard_quit()
             time.sleep(0.05)
+
+    def _play_splash_gif(self):
+        """Play the animated splash through once at its authored frame
+        timing; a tap (or q/Esc) skips it. BILINEAR keeps decode+resize
+        inside the ~40 ms frame budget (LANCZOS doesn't on this Pi); if a
+        frame still runs late we drop its blit rather than let the whole
+        animation drag."""
+        gif = self._splash_gif
+        self._splash_gif = None
+        try:
+            frames = gif.n_frames
+        except (AttributeError, OSError):
+            frames = 1
+        due = time.monotonic() + gif.info.get("duration", 40) / 1000
+        try:
+            for i in range(1, frames):   # frame 0 is already on the panel
+                while self.running:
+                    if any(k == "down" for k, _x, _y in self.touch.poll()):
+                        return           # tap lifts the curtain early
+                    self._read_keyboard_quit()
+                    remaining = due - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    time.sleep(min(0.02, remaining))
+                if not self.running:
+                    return
+                # seek even when the blit is skipped: GIF frames composite
+                gif.seek(i)
+                duration = gif.info.get("duration", 40) / 1000
+                behind = time.monotonic() - due
+                if behind <= duration:
+                    self.fb.blit(self._fit_splash(gif.convert("RGB"),
+                                                  Image.BILINEAR))
+                due += duration
+        except (OSError, ValueError):
+            pass                         # truncated GIF: just start the UI
+        finally:
+            gif.close()
 
     # -------------------------------------------------------------- navigation
     def is_launcher(self, scr):
