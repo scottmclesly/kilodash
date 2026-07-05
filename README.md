@@ -1,4 +1,6 @@
-# Scottina
+<img width="4032" height="3024" alt="Scottina" src="https://github.com/user-attachments/assets/cac0e053-8477-4c56-a48c-3e772be38feb" />
+
+# Scottina V1.0
 
 **The digital Swiss Army knife for hardware developers.**
 
@@ -8,12 +10,6 @@ straight to a tap-driven dashboard — no keyboard, no mouse, no X server — an
 fronts your network, radio, bus, and web-app tooling as finger-sized tiles.
 
 ![screens](docs/screens.png)
-
-> **Name note:** the product is **Scottina**, hosted at
-> [github.com/scottmclesly/Scottina](https://github.com/scottmclesly/Scottina).
-> The Python package, install path (`/opt/kilodash`), and systemd unit keep the
-> historical working name `kilodash` on purpose — renaming them buys nothing
-> and risks breaking the service. Everything you *see* says Scottina.
 
 ## Why it works the way it does
 
@@ -213,6 +209,15 @@ setup/                  web-app installer, systemd units, Node-RED flow + guide
 Adding a screen: subclass `screens.base.Screen`, implement `draw_content` and
 `handle_tap`, set a `glyph` (see `pictograms.py`), and add it to
 `screens/__init__.py::SCREENS`.
+
+<img width="4032" height="3024" alt="Scottina" src="https://github.com/user-attachments/assets/c9a04ea0-9efd-4c91-98ab-5cca49c780d2" />
+<img width="4032" height="3024" alt="Scottina" src="https://github.com/user-attachments/assets/a7664f76-7a34-4607-8233-1c59953c94f8" />
+> **Name note:** the product is **Scottina**, hosted at
+> [github.com/scottmclesly/Scottina](https://github.com/scottmclesly/Scottina).
+> The Python package, install path (`/opt/kilodash`), and systemd unit keep the
+> historical working name `kilodash` on purpose — renaming them buys nothing
+> and risks breaking the service. Everything you *see* says Scottina.
+
 
 ## Roadmap
 
