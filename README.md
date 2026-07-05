@@ -1,15 +1,68 @@
-<img width="4032" height="3024" alt="Scottina" src="https://github.com/user-attachments/assets/cac0e053-8477-4c56-a48c-3e772be38feb" />
+# Scottina
 
-# Scottina V1.0
-
-**The digital Swiss Army knife for hardware developers.**
+**A pocket-sized front panel for the diagnostic tools you already use.**
 
 A fingertip control panel for a Raspberry Pi 5 running Kali Linux, driving a
 3.5" ILI9486 SPI touchscreen (480×320, ADS7846 resistive touch). It boots
 straight to a tap-driven dashboard — no keyboard, no mouse, no X server — and
 fronts your network, radio, bus, and web-app tooling as finger-sized tiles.
 
-![screens](docs/screens.png)
+<img width="4032" height="3024" alt="Scottina" src="https://github.com/user-attachments/assets/cac0e053-8477-4c56-a48c-3e772be38feb" />
+
+## The gap it closes
+
+Most bench diagnostics live at one of two extremes. Either you're on a headless
+box squinting at a terminal over SSH, or you're hauling a laptop to the bench to
+open a full-size GUI. Headless is a bit too little. The full interface is way too
+much.
+
+Here's the thing: for any single diagnostic question, you're usually pressing two
+buttons of that tool and watching two numbers come back. The other 90% of the
+interface is just in the way. You don't need the ribbon menus, the config panels,
+the twelve tabs — you need to plug a thing in, glance at the 3.5" screen, and get
+your answer.
+
+Scottina is that middle ground. It's a simplified front panel for everyone's most
+familiar diagnostic tools: the couple of controls you actually press and the
+couple of datapoints you're actually watching, and nothing else. It doesn't
+invent new tools — it gives the ones you already trust a front panel sized for the
+one question you're asking.
+
+It is **not** another Flipper Zero, a Marauder deployment, or a wardriving toy. It
+shares some radios and some Kali tools with those, but the point isn't offense —
+it's a shop multitool that makes well-known software glanceable.
+
+## What it feels like in practice
+
+- **Pulling a Pi off the rack without the usual dance.** No hooking up a screen
+  and keyboard just to join Wi-Fi, no hunting for an Ethernet cable, no arp-scan
+  through a forest of "Raspberry Pi Foundation" MACs to SSH in blind. Scottina
+  joins networks headless from the touchscreen, and the moment it's connected the
+  IP is right there in the header to SSH straight to.
+- **A Node-RED screen as a manual CAN troubleshooting bench.** Wire one button to
+  a keep-alive heartbeat; a teeter-totter feedback field shows the *origin* of the
+  last heartbeat — you or the target — so when a link goes quiet you know who
+  dropped first. Two fields show DBC-normalized throttle % and RPM (Node-RED runs
+  cantools under the hood), and the other buttons fire the messages you're
+  testing. Step through a complex CAN sequence by hand with snappy feedback.
+- **A five-second "is my wireless alive?" check with the SDR.** Even receive-only,
+  a preloaded table of expected signals plus the Pi 5's headroom turns "what's
+  transmitting nearby, across protocols?" into a single button press.
+- **New-board bring-up before writing driver code.** Tap the I2C scanner to
+  confirm the sensor is actually acking at the address you expect — "is it the
+  wiring or my code?" answered in five seconds.
+- **Proving your own transmitter works.** Built a 433/915 MHz sensor? Point
+  Scottina at the band and watch for your packets to show up and decode.
+
+Two small touches that tie it together: **Scottina's own IP is always in the
+header**, and every **web-app screen shows the exact `URL:port`** to open the full
+interface — no guessing which port Node-RED or Kismet landed on today.
+
+> **Name note:** the product is **Scottina**, hosted at
+> [github.com/scottmclesly/Scottina](https://github.com/scottmclesly/Scottina).
+> The Python package, install path (`/opt/kilodash`), and systemd unit keep the
+> historical working name `kilodash` on purpose — renaming them buys nothing
+> and risks breaking the service. Everything you *see* says Scottina.
 
 ## Why it works the way it does
 
@@ -209,13 +262,6 @@ setup/                  web-app installer, systemd units, Node-RED flow + guide
 Adding a screen: subclass `screens.base.Screen`, implement `draw_content` and
 `handle_tap`, set a `glyph` (see `pictograms.py`), and add it to
 `screens/__init__.py::SCREENS`.
-
-> **Name note:** the product is **Scottina**, hosted at
-> [github.com/scottmclesly/Scottina](https://github.com/scottmclesly/Scottina).
-> The Python package, install path (`/opt/kilodash`), and systemd unit keep the
-> historical working name `kilodash` on purpose — renaming them buys nothing
-> and risks breaking the service. Everything you *see* says Scottina.
-
 
 ## Roadmap
 
