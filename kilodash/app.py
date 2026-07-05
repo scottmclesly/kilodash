@@ -55,6 +55,7 @@ class App:
         self.dimmed = False
         self.keyboard = None
         self._toast = None
+        self._flash = None              # (start, until, period) full-screen attention flash
         self.backlight = self._find_backlight()
 
         self.current.on_enter()
@@ -112,6 +113,18 @@ class App:
     # ------------------------------------------------------------------ toast
     def toast(self, msg, secs=2.5):
         self._toast = (msg, time.monotonic() + secs)
+        self.dirty = True
+
+    # ------------------------------------------------------------------ flash
+    def flash(self, times=3, period=0.18):
+        """Blink the whole screen a few times to grab attention (no speaker).
+        Wakes the dimmer so it's visible even if the screen had gone idle. Safe
+        to call from a background thread."""
+        now = time.monotonic()
+        self._flash = (now, now + times * 2 * period, period)
+        self.dimmed = False
+        self._set_backlight(100)
+        self.last_activity = now
         self.dirty = True
 
     # -------------------------------------------------------------- dimming
@@ -240,6 +253,14 @@ class App:
             else:
                 self._toast = None
 
+        if self._flash:
+            start, until, period = self._flash
+            now = time.monotonic()
+            if now >= until:
+                self._flash = None
+            elif int((now - start) / period) % 2 == 0:
+                img = Image.new("RGB", (self.w, self.h), th.fg)   # bright flash frame
+
         if self.config["flip_180"]:
             img = img.transpose(Image.ROTATE_180)
         if self.dimmed and not self.backlight:
@@ -335,6 +356,9 @@ class App:
             if not self.dimmed and self.keyboard is None:
                 if self.current.maybe_tick():
                     self.dirty = True
+
+            if self._flash:                 # keep redrawing so the blink animates
+                self.dirty = True
 
             if self.dirty:
                 self.fb.blit(self._compose())

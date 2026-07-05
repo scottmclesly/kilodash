@@ -13,12 +13,14 @@ def rrect(draw, box, radius, fill=None, outline=None, width=1):
 
 
 class Button:
-    def __init__(self, box, label, on_tap=None, kind="normal", font_size=20):
+    def __init__(self, box, label, on_tap=None, kind="normal", font_size=20,
+                 color=None):
         self.box = box            # (x0, y0, x1, y1)
         self.label = label
         self.on_tap = on_tap
         self.kind = kind          # normal | primary | danger | ghost
         self.font_size = font_size
+        self.color = color        # explicit fill (overrides kind) — e.g. a phase colour
         self.enabled = True
 
     def hit(self, x, y):
@@ -27,7 +29,9 @@ class Button:
 
     def draw(self, d, th):
         x0, y0, x1, y1 = self.box
-        if self.kind == "primary":
+        if self.color is not None:
+            fill, fg = self.color, th.ink
+        elif self.kind == "primary":
             fill, fg = th.accent, th.ink
         elif self.kind == "danger":
             fill, fg = th.bad, th.ink

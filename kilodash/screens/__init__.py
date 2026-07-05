@@ -15,6 +15,7 @@ from .kismet import KismetScreen
 from .nodered import NodeRedScreen
 from .aiscatcher import AisCatcherScreen
 from .signalk import SignalKScreen
+from .pomodoro import PomodoroScreen
 from .health import HealthScreen
 from .settings import SettingsScreen
 
@@ -31,6 +32,7 @@ SCREENS = [
     NodeRedScreen,       # web app: node-red (tile shows if installed)
     AisCatcherScreen,    # web app: ais-catcher (needs RTL-SDR + installed)
     SignalKScreen,       # web app: signal-k (tile shows if signalk.service present)
+    PomodoroScreen,      # focus timer; keeps running in the background
     HealthScreen,
     SettingsScreen,
 ]
