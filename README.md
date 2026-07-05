@@ -210,8 +210,6 @@ Adding a screen: subclass `screens.base.Screen`, implement `draw_content` and
 `handle_tap`, set a `glyph` (see `pictograms.py`), and add it to
 `screens/__init__.py::SCREENS`.
 
-<img width="4032" height="3024" alt="Scottina" src="https://github.com/user-attachments/assets/c9a04ea0-9efd-4c91-98ab-5cca49c780d2" />
-<img width="4032" height="3024" alt="Scottina" src="https://github.com/user-attachments/assets/a7664f76-7a34-4607-8233-1c59953c94f8" />
 > **Name note:** the product is **Scottina**, hosted at
 > [github.com/scottmclesly/Scottina](https://github.com/scottmclesly/Scottina).
 > The Python package, install path (`/opt/kilodash`), and systemd unit keep the
