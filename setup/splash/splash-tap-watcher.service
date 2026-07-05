@@ -1,0 +1,13 @@
+[Unit]
+Description=Reveal boot logs when the splash screen is tapped
+DefaultDependencies=no
+After=local-fs.target
+ConditionKernelCommandLine=splash
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/splash-tap-watcher
+TimeoutStartSec=0
+
+[Install]
+WantedBy=sysinit.target

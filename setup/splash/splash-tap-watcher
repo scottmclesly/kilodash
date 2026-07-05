@@ -1,0 +1,40 @@
+#!/bin/sh
+# Reveal boot logs on touchscreen tap while the Plymouth splash is up.
+# Exits silently once the splash ends on its own (normal boot).
+
+find_touch() {
+    for d in /sys/class/input/event*; do
+        [ -e "$d/device/name" ] || continue
+        case "$(cat "$d/device/name")" in
+            *ADS7846*) echo "/dev/input/$(basename "$d")"; return 0 ;;
+        esac
+    done
+    return 1
+}
+
+# Wait up to 30s for the touch controller to probe (~10s into boot normally).
+i=0
+until DEV=$(find_touch); do
+    i=$((i + 1))
+    [ "$i" -ge 60 ] && exit 0
+    sleep 0.5
+done
+
+# The ADS7846 only emits input events while the panel is being touched,
+# so any readable bytes mean a tap. Poll in 1s slices so we notice when
+# the splash has ended and can exit without a tap.
+while plymouth --ping 2>/dev/null; do
+    if timeout 1 dd if="$DEV" of=/dev/null bs=16 count=1 2>/dev/null; then
+        plymouth quit 2>/dev/null
+        # Dump everything boot suppressed so far, then follow until the
+        # system is up (kilodash takes over the panel at that point).
+        journalctl -b -o short-monotonic --no-pager > /dev/tty1 2>/dev/null
+        journalctl -b -f -o short-monotonic --no-pager > /dev/tty1 2>/dev/null &
+        FOLLOW=$!
+        systemctl is-system-running --wait > /dev/null 2>&1
+        sleep 3
+        kill "$FOLLOW" 2>/dev/null
+        exit 0
+    fi
+done
+exit 0

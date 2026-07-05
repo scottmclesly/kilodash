@@ -1,0 +1,27 @@
+Window.SetBackgroundTopColor(0.0, 0.0, 0.0);
+Window.SetBackgroundBottomColor(0.0, 0.0, 0.0);
+
+splash_image = Image("splash.png");
+
+screen_width = Window.GetWidth();
+screen_height = Window.GetHeight();
+
+scale_x = screen_width / splash_image.GetWidth();
+scale_y = screen_height / splash_image.GetHeight();
+if (scale_x < scale_y)
+    scale = scale_x;
+else
+    scale = scale_y;
+
+scaled_image = splash_image.Scale(splash_image.GetWidth() * scale,
+                                  splash_image.GetHeight() * scale);
+
+splash_sprite = Sprite(scaled_image);
+splash_sprite.SetPosition((screen_width - scaled_image.GetWidth()) / 2,
+                          (screen_height - scaled_image.GetHeight()) / 2,
+                          0);
+
+# Keep the splash up during shutdown too; show nothing extra.
+fun refresh_callback() {
+}
+Plymouth.SetRefreshFunction(refresh_callback);

@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Scottina
+Description=Scottina splash screen
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/scottina
+ScriptFile=/usr/share/plymouth/themes/scottina/scottina.script
