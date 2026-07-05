@@ -1,15 +1,15 @@
-# Wiring the kilodash Node-RED panel
+# Wiring the Scottina Node-RED panel
 
-The kilodash **Node-RED** screen is a thin front panel for a flow running on the
+The Scottina **Node-RED** screen is a thin front panel for a flow running on the
 Pi. It shows **4 feedback fields** and **4 trigger buttons**. It talks to your
 flow over two HTTP endpoints on `127.0.0.1:1880`:
 
 | Direction | Endpoint | What it does |
 |---|---|---|
-| kilodash → reads | `GET /kilodash/state` | your flow returns the 4 field labels+values and 4 button labels |
-| kilodash → writes | `POST /kilodash/btn/1..4` | fired when you tap a panel button |
+| Scottina → reads | `GET /kilodash/state` | your flow returns the 4 field labels+values and 4 button labels |
+| Scottina → writes | `POST /kilodash/btn/1..4` | fired when you tap a panel button |
 
-kilodash polls `/kilodash/state` about every 2 seconds and redraws.
+Scottina polls `/kilodash/state` about every 2 seconds and redraws.
 
 ## One-time setup
 
@@ -17,7 +17,7 @@ kilodash polls `/kilodash/state` about every 2 seconds and redraws.
    shows (e.g. `http://<pi-ip>:1880`) from a laptop.
 2. Menu (☰) → **Import** → paste [`nodered-kilodash-flow.json`](nodered-kilodash-flow.json)
    → **Import** → **Deploy**.
-3. On kilodash, open the **Node-RED** tile. Within ~2s **Field 1** shows a live
+3. On Scottina, open the **Node-RED** tile. Within ~2s **Field 1** shows a live
    clock — that's the built-in demo proving the feedback path works. Delete the
    two demo nodes once you've seen it.
 
@@ -112,4 +112,4 @@ button 1 (watch the Node-RED debug sidebar for the `node.warn`).
 }
 ```
 
-Fewer than 4 entries is fine — kilodash pads the rest with defaults.
+Fewer than 4 entries is fine — Scottina pads the rest with defaults.

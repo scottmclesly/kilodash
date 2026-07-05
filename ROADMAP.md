@@ -1,11 +1,11 @@
-# kilodash roadmap — Phases 2 & 3
+# Scottina roadmap — Phases 2 & 3
 
 Phase 1 (shipped): core UI, LAN scan, Wi-Fi scan/connect, Pi health, settings,
 boot autostart.
 
-Phases 2–3 turn kilodash into a field tool using the two USB radios and the
+Phases 2–3 turn Scottina into a field tool using the two USB radios and the
 Kali toolset already on the box. **Everything offensive here assumes you own the
-network or have written authorization** — kilodash gates those actions behind an
+network or have written authorization** — Scottina gates those actions behind an
 explicit confirm and an "authorized use" switch.
 
 ---
@@ -123,7 +123,7 @@ exercises every framework piece the rest of Phase 3 reuses.
 
 ## Phase 4 — Web-app launch terminal  🟡 in progress
 
-Beyond the built-in scanners, kilodash also fronts *bigger packages that ship
+Beyond the built-in scanners, Scottina also fronts *bigger packages that ship
 their own browser UI*. Opening one of these screens **launches the app**, waits
 for it to actually answer, and shows the **URL:port** to open the full UI from a
 phone/laptop — plus a compact native panel of app-specific controls + feedback.
@@ -154,7 +154,7 @@ phone/laptop — plus a compact native panel of app-specific controls + feedback
   one-time web login done first**; until then the panel shows a hint and the full
   list stays in the web UI. Colour: AP=accent, client=ok, BT=warn. *On-hardware
   TODO: confirm the exact device-summary endpoint/fields on this Kismet build.*
-- **Node-RED**: kilodash speaks a tiny contract you wire in a flow —
+- **Node-RED**: Scottina speaks a tiny contract you wire in a flow —
   `GET /kilodash/state → {fields:[{label,value}×4], buttons:[{label}×4]}` and
   `POST /kilodash/btn/1..4`. Feedback fields read flow context `f1..f4` (labels
   `f1_label..`), so any node feeds a field by writing that key. **Wire-up guide:

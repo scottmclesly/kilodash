@@ -46,6 +46,7 @@ def _scan():
 
 class I2cScreen(Screen):
     title = "I2C Scan"
+    glyph = "i2c"
     tile_color_key = "ok"
     device_key = "i2c"
     scrollable = True

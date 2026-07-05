@@ -100,6 +100,7 @@ def _parse_csv(prefix):
 
 class WifiSniffScreen(Screen):
     title = "WiFi Sniff"
+    glyph = "wifisniff"
     tile_color_key = "warn"
     device_key = "wifisniff"
     scrollable = True

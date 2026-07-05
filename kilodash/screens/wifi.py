@@ -21,6 +21,7 @@ def _signal_bars(d, th, x, y, signal):
 
 class WifiScreen(Screen):
     title = "Wi-Fi"
+    glyph = "wifi"
     tile_color_key = "ok"
     scrollable = True
 

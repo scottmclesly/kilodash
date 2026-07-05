@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# kilodash Phase 4 installer — the web-app launch-terminal backends.
+# Scottina Phase 4 installer — the web-app launch-terminal backends.
 #
 # Installs Node-RED, AIS-catcher (RX), and Signal K, plus their systemd units,
 # reproducing the steps that were first done by hand. Idempotent: safe to re-run
@@ -90,9 +90,9 @@ install -m644 "$SCRIPT_DIR/signalk.service" /etc/systemd/system/signalk.service
 # ----------------------------------------------------------------- systemd ---
 say "systemd"
 systemctl daemon-reload
-echo "Units installed (left disabled — kilodash launches them on demand):"
+echo "Units installed (left disabled — Scottina launches them on demand):"
 echo "    nodered.service   signalk.service"
 echo "For an always-on hub (e.g. Signal K on a boat):  systemctl enable --now signalk"
 
-say "Done — restart kilodash to load the new screens"
+say "Done — restart Scottina to load the new screens"
 echo "    systemctl restart kilodash"

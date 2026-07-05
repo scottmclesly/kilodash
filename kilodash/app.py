@@ -29,6 +29,9 @@ from .touch import Touch
 DRAG_SLOP = 30          # px of net travel that separates a tap from a drag
 BACK_HIT = (0, 0, 100, 46)
 
+SPLASH_PATH = os.path.join(os.path.dirname(__file__), "..", "ScottinaSplash.png")
+SPLASH_SECS = 2.5       # minimum curtain time; a tap dismisses it early
+
 
 class _FpsMeter:
     """Rolling frame-time stats (KioskSpeedImprovementToDo task 1). Always
@@ -54,7 +57,7 @@ class _FpsMeter:
         self.text = (f"{n / dt:.1f}fps c{self._compose / n * 1000:.0f}"
                      f" b{self._blit / n * 1000:.0f}ms {self._partial}/{n}part")
         if log:
-            print(f"[kilodash fps] {n / dt:.1f} fps · compose "
+            print(f"[scottina fps] {n / dt:.1f} fps · compose "
                   f"{self._compose / n * 1000:.1f} ms · blit "
                   f"{self._blit / n * 1000:.1f} ms · "
                   f"{self._partial}/{n} partial", flush=True)
@@ -70,6 +73,7 @@ class App:
         self.theme = T.Theme(self.config["theme"])
         self.fb = Framebuffer()
         self.w, self.h = self.fb.w, self.fb.h
+        self._show_splash()             # curtain up while the rest boots
         self.touch = Touch(self.config, self.w, self.h)
         self.devices = Devices()
         self.devices.refresh(force=True)
@@ -119,6 +123,33 @@ class App:
             return
         self._dirty = True
         self._dirty_rects = list(rects) if rects is not None else None
+
+    # ----------------------------------------------------------- boot curtain
+    def _show_splash(self):
+        """Put the Scottina splash up the moment we own the framebuffer, so
+        the boot gap reads as an intentional curtain; run() holds it for
+        SPLASH_SECS (tap to skip) before the first real frame."""
+        self._splash_until = 0.0
+        try:
+            art = Image.open(SPLASH_PATH).convert("RGB")
+        except (OSError, ValueError):
+            return
+        scale = min(self.w / art.width, self.h / art.height)
+        art = art.resize((round(art.width * scale), round(art.height * scale)),
+                         Image.LANCZOS)
+        img = Image.new("RGB", (self.w, self.h), (0, 0, 0))
+        img.paste(art, ((self.w - art.width) // 2, (self.h - art.height) // 2))
+        if self.config["flip_180"]:
+            img = img.transpose(Image.ROTATE_180)
+        self.fb.blit(img)
+        self._splash_until = time.monotonic() + SPLASH_SECS
+
+    def _hold_splash(self):
+        while self.running and time.monotonic() < self._splash_until:
+            if any(kind == "down" for kind, _x, _y in self.touch.poll()):
+                return                   # tap lifts the curtain early
+            self._read_keyboard_quit()
+            time.sleep(0.05)
 
     # -------------------------------------------------------------- navigation
     def is_launcher(self, scr):
@@ -398,6 +429,7 @@ class App:
             self.fb.close()
 
     def _loop(self):
+        self._hold_splash()
         while self.running:
             for kind, x, y in self.touch.poll():
                 if kind == "down":

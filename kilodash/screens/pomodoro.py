@@ -29,6 +29,7 @@ PHASES = {
 
 class PomodoroScreen(Screen):
     title = "Pomodoro"
+    glyph = "pomodoro"
     tile_color_key = "bad"
     scrollable = False
 

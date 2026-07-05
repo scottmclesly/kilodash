@@ -112,6 +112,7 @@ def _capture(freq_hz, secs=4):
 
 class SdrScreen(Screen):
     title = "RTL-SDR"
+    glyph = "sdr"
     tile_color_key = "accent"
     device_key = "sdr"
     scrollable = False

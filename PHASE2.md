@@ -1,6 +1,6 @@
-# kilodash Phase 2 — Dongle integration
+# Scottina Phase 2 — Dongle integration
 
-Turns kilodash into a hotplug tool bench: plug a supported USB device in and its
+Turns Scottina into a hotplug tool bench: plug a supported USB device in and its
 tile appears on the Home grid; unplug it and the tile (and any running capture)
 goes away. Detection is cheap sysfs polling in [devices.py](kilodash/devices.py);
 each device maps to a screen via its `device_key`.
@@ -105,7 +105,7 @@ read-only live view of a device's UART/debug output.
 
 ## Scope
 
-kilodash is bench/diagnostic tooling for robotics and hardware work: receive,
+Scottina is bench/diagnostic tooling for robotics and hardware work: receive,
 scan, decode, log. No attack tooling (no deauth/injection). CAN send/replay in
 stage 3 is for bringing up and testing *your own* buses.
 

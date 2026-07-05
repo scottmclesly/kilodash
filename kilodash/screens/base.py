@@ -14,6 +14,7 @@ HEADER_H = 44
 class Screen:
     title = "Screen"
     icon = ""
+    glyph = None               # launcher pictogram key (see pictograms.py)
     scrollable = False
     device_key = None          # set on hotplug screens; tile shows only if present
 

@@ -85,6 +85,7 @@ def _autodetect(iface):
 
 class CanScreen(Screen):
     title = "CAN Bus"
+    glyph = "can"
     tile_color_key = "bad"
     device_key = "can"
     scrollable = False

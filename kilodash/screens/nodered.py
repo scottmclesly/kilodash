@@ -28,6 +28,7 @@ BASE = "http://127.0.0.1:1880/kilodash"
 
 class NodeRedScreen(WebAppScreen):
     title = "Node-RED"
+    glyph = "nodered"
     tile_color_key = "bad"          # Node-RED's brand red reads well as a tile
     app_name = "Node-RED"
     port = 1880

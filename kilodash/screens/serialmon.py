@@ -25,6 +25,7 @@ def _ports():
 
 class SerialScreen(Screen):
     title = "Serial"
+    glyph = "serial"
     tile_color_key = "muted"
     device_key = "serial"
     scrollable = False

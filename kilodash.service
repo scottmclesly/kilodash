@@ -1,5 +1,5 @@
 [Unit]
-Description=kilodash touchscreen control panel
+Description=Scottina touchscreen control panel
 After=network-online.target NetworkManager.service
 Wants=network-online.target
 

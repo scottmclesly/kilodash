@@ -103,6 +103,7 @@ def _age(ts):
 
 class SignalKScreen(WebAppScreen):
     title = "Signal K"
+    glyph = "signalk"
     tile_color_key = "ok"
     app_name = "Signal K"
     port = 3000

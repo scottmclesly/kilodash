@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""kilodash entrypoint. Run as root (needs /dev/fb0, evdev, nmcli, arp-scan):
+"""Scottina entrypoint. Run as root (needs /dev/fb0, evdev, nmcli, arp-scan):
 
     sudo python3 /opt/kilodash/run.py
 
-Swipe left/right between screens, tap to act, ESC/q on a USB keyboard to quit.
+Tap tiles to open tools, Back to return home, ESC/q on a USB keyboard to quit.
+(Paths and module names keep the historical working name `kilodash`.)
 """
 
 import sys
@@ -16,7 +17,7 @@ def main():
     try:
         app = App(SCREENS)
     except Exception as e:                       # noqa: BLE001
-        print(f"kilodash: failed to start: {e}", file=sys.stderr)
+        print(f"scottina: failed to start: {e}", file=sys.stderr)
         raise
     app.run()
 

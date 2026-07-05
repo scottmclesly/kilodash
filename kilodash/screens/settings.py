@@ -20,6 +20,7 @@ GROUP_ORDER = ["System", "Display", "Touch"]
 
 class SettingsScreen(Screen):
     title = "Settings"
+    glyph = "settings"
     tile_color_key = "muted"
     scrollable = True
 

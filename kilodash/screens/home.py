@@ -5,7 +5,7 @@ appear only while their dongle is plugged in (see devices.py). All taps.
 
 import time
 
-from .. import system, theme as T
+from .. import pictograms, system, theme as T
 from ..widgets import rrect
 from .base import Screen, HEADER_H
 
@@ -15,7 +15,7 @@ ROTATE_SEC = 3
 
 
 class LauncherScreen(Screen):
-    title = "kilodash"
+    title = "Scottina"
     scrollable = False
 
     def __init__(self, app):
@@ -87,7 +87,9 @@ class LauncherScreen(Screen):
             rrect(d, box, 14, fill=th.card)
             cx = (x0 + x0 + tw) / 2
             cy = y0 + tile_h * 0.34
-            d.ellipse((cx - 11, cy - 11, cx + 11, cy + 11), fill=color)
+            # semiotic-standard pictogram, one per subsystem (pictograms.py)
+            pictograms.draw(d, getattr(scr, "glyph", None), cx, cy,
+                            min(16, tile_h * 0.22), color)
             # live badge on device tiles
             if scr.device_key is not None:
                 d.ellipse((x0 + tw - 20, y0 + 12, x0 + tw - 12, y0 + 20),

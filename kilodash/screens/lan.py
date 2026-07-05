@@ -13,6 +13,7 @@ ROW_H = 62
 
 class LanScreen(Screen):
     title = "LAN Scan"
+    glyph = "lan"
     tile_color_key = "accent"
     scrollable = True
 
