@@ -175,9 +175,7 @@ phone/laptop — plus a compact native panel of app-specific controls + feedback
   `TX_CMD` invocation (seed MMSI/position) and surface ais-simulator's own web UI.*
 
 ### Candidate next web apps
-Grafana/Prometheus (Pi telemetry dashboards), `dump1090-fa` (ADS-B map UI on
-:8080 — pairs with the SDR), Cockpit (system admin on :9090), Portainer/Uptime
-Kuma, `gqrx`-headless / OpenWebRX (browser SDR waterfall).
+Extended CAN screeen
 
 ### Install / packaging TODO
 - `setup/install-phase4.sh`: node-red, AIS-catcher, dump1090-fa, and (optional,
