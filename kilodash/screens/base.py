@@ -23,6 +23,7 @@ class Screen:
         self.content_h = 0        # set by draw_content when scrollable
         self._last_tick = 0.0
         self.tick_interval = 3.0
+        self._dirty_rects = None  # boxes this tick changed; None = full frame
 
     # ---- availability ----
     def available(self):
@@ -46,8 +47,25 @@ class Screen:
         now = time.monotonic()
         if now - self._last_tick >= self.tick_interval:
             self._last_tick = now
+            self._dirty_rects = None
             return self.tick()
         return False
+
+    def report_dirty(self, *rects):
+        """Declare that this tick only changed these (x0, y0, x1, y1) boxes
+        (full-screen coordinates). Call from tick() before returning True and
+        only the covering row bands get written to the panel — the win that
+        makes fast tick rates affordable on the SPI framebuffer. Not calling
+        this keeps the default: the frame is blitted in full."""
+        if self._dirty_rects is None:
+            self._dirty_rects = []
+        self._dirty_rects.extend(rects)
+
+    def take_dirty_rects(self):
+        """Consume this tick's reported boxes (None = full frame)."""
+        rects = self._dirty_rects
+        self._dirty_rects = None
+        return rects
 
     # ---- input ----
     def handle_tap(self, x, y):

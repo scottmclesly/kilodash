@@ -24,6 +24,10 @@ from .webapp_base import WebAppScreen
 
 SELF_URL = "http://127.0.0.1:3000/signalk/v1/api/vessels/self"
 
+FETCH_FAST = 0.25       # REST poll while data is flowing (localhost, cheap)
+FETCH_SLOW = 1.5        # guardrail: SK down or nothing flowing → back off
+HB_REDRAW = 0.1         # heartbeat "x.xs ago" repaint cadence between fetches
+
 # --- SI base -> display conversions (getting these wrong is the classic SK bug)
 KN = 1.943844          # m/s   -> knots
 DEG = 57.2957795       # rad   -> degrees
@@ -111,14 +115,62 @@ class SignalKScreen(WebAppScreen):
         super().__init__(app)
         self.model = {}
         self.page = 0
+        # The tick is the *paint* rate (dirty-rect bands make it affordable);
+        # the REST snapshot poll below is the *data* rate.
+        self.tick_interval = 0.05
+        self._fetch_iv = FETCH_SLOW
+        self._last_fetch = -1e9
+        self._last_hb = -1e9
+        self._panel_box = None    # vitals grid + heartbeat, below the controls
+        self._hb_box = None       # heartbeat bar band alone
 
     def poll_app(self):
         if self.web.state != webapp.UP:
             return False
         token = self.app.config["signalk_token"] or None
-        data = webapp.http_json(SELF_URL, timeout=1.5, token=token)
+        data = webapp.http_json(SELF_URL, timeout=0.8, token=token)
         if isinstance(data, dict):
             self.model = data
+            return True
+        return False
+
+    def _min_age(self):
+        """Age of the freshest value across all pages, or None if no data."""
+        best = None
+        for _, metrics in PAGES:
+            for _, path, _conv, _unit, _dec in metrics:
+                leaf = _leaf(self.model, path)
+                a = _age(leaf.get("timestamp")) if leaf else None
+                if a is not None and (best is None or a < best):
+                    best = a
+        return best
+
+    def tick(self):
+        if self.web.poll():
+            # banner/state changed — repaint everything, and pick the tick
+            # cadence for the new state (guardrail: idle fast tick when down)
+            self.tick_interval = 0.05 if self.web.state == webapp.UP else 0.5
+            return True
+        if self.web.state != webapp.UP:
+            self.tick_interval = 0.5
+            return False
+        self.tick_interval = 0.05
+        now = time.monotonic()
+        if now - self._last_fetch >= self._fetch_iv:
+            self._last_fetch = now
+            got = self.poll_app()
+            age = self._min_age()
+            self._fetch_iv = (FETCH_FAST if got and age is not None and age < 15
+                              else FETCH_SLOW)
+            if got:
+                self._last_hb = now
+                if self._panel_box:
+                    self.report_dirty(self._panel_box)
+                return True
+        # between fetches, keep only the heartbeat age readout live
+        if now - self._last_hb >= HB_REDRAW and self._hb_box:
+            self._last_hb = now
+            self.report_dirty(self._hb_box)
             return True
         return False
 
@@ -142,6 +194,7 @@ class SignalKScreen(WebAppScreen):
     # ---- rendering ----
     def draw_app(self, d, th, top):
         w = self.app.w
+        panel_top = top
         if self.web.state != webapp.UP:
             d.text((16, top + 20), "Waiting for Signal K…",
                    font=T.font(14), fill=th.muted)
@@ -175,6 +228,9 @@ class SignalKScreen(WebAppScreen):
         top += 2 * ch + gap + 8
 
         self._draw_heartbeat(d, th, top, w)
+        # row bands for the partial-blit path (full width, small padding)
+        self._hb_box = (0, top - 2, w, top + 28)
+        self._panel_box = (0, panel_top, w, top + 28)
 
     def _draw_heartbeat(self, d, th, y, w):
         ages, srcs = [], set()

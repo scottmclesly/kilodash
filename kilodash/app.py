@@ -30,6 +30,40 @@ DRAG_SLOP = 30          # px of net travel that separates a tap from a drag
 BACK_HIT = (0, 0, 100, 46)
 
 
+class _FpsMeter:
+    """Rolling frame-time stats (KioskSpeedImprovementToDo task 1). Always
+    accumulated (it's a few adds); drawn/logged only when `show_fps` is on."""
+
+    def __init__(self):
+        self.text = ""
+        self._t0 = time.monotonic()
+        self._n = 0
+        self._compose = 0.0
+        self._blit = 0.0
+        self._partial = 0
+
+    def frame(self, compose_s, blit_s, partial, log=False):
+        self._n += 1
+        self._compose += compose_s
+        self._blit += blit_s
+        self._partial += bool(partial)
+        dt = time.monotonic() - self._t0
+        if dt < 2.0:
+            return
+        n = self._n
+        self.text = (f"{n / dt:.1f}fps c{self._compose / n * 1000:.0f}"
+                     f" b{self._blit / n * 1000:.0f}ms {self._partial}/{n}part")
+        if log:
+            print(f"[kilodash fps] {n / dt:.1f} fps · compose "
+                  f"{self._compose / n * 1000:.1f} ms · blit "
+                  f"{self._blit / n * 1000:.1f} ms · "
+                  f"{self._partial}/{n} partial", flush=True)
+        self._t0 = time.monotonic()
+        self._n = 0
+        self._compose = self._blit = 0.0
+        self._partial = 0
+
+
 class App:
     def __init__(self, screen_classes):
         self.config = Config()
@@ -46,6 +80,7 @@ class App:
         self.current = (self.launcher if self.config["touch_calibrated"]
                         else self.calibration)
         self.running = True
+        self._fps = _FpsMeter()
         self.dirty = True
 
         self._g = None                  # in-progress gesture
@@ -59,6 +94,31 @@ class App:
         self.backlight = self._find_backlight()
 
         self.current.on_enter()
+
+    # ------------------------------------------------------------ dirty state
+    # `dirty = True` (the pattern used all over) means "repaint everything".
+    # Only the active screen's tick can narrow that to dirty rects, and a
+    # pending full repaint is never downgraded by one.
+    @property
+    def dirty(self):
+        return self._dirty
+
+    @dirty.setter
+    def dirty(self, value):
+        self._dirty = value
+        self._dirty_rects = None
+
+    def _mark_tick_dirty(self, rects):
+        """Redraw request from the active screen's tick; rects is a list of
+        changed (x0, y0, x1, y1) boxes, or None for a full frame."""
+        if self._dirty:
+            if rects is None:
+                self._dirty_rects = None
+            elif self._dirty_rects is not None:
+                self._dirty_rects.extend(rects)
+            return
+        self._dirty = True
+        self._dirty_rects = list(rects) if rects is not None else None
 
     # -------------------------------------------------------------- navigation
     def is_launcher(self, scr):
@@ -261,6 +321,13 @@ class App:
             elif int((now - start) / period) % 2 == 0:
                 img = Image.new("RGB", (self.w, self.h), th.fg)   # bright flash frame
 
+        if self.config["show_fps"] and self._fps.text:
+            fx0, fy0, fx1, fy1 = self._fps_rect()
+            d = ImageDraw.Draw(img)
+            d.rectangle((fx0, fy0, fx1, fy1), fill=th.card)
+            d.text((fx0 + 4, fy0 + 2), self._fps.text,
+                   font=T.font(11, mono=True), fill=th.warn)
+
         if self.config["flip_180"]:
             img = img.transpose(Image.ROTATE_180)
         if self.dimmed and not self.backlight:
@@ -355,13 +422,49 @@ class App:
 
             if not self.dimmed and self.keyboard is None:
                 if self.current.maybe_tick():
-                    self.dirty = True
+                    self._mark_tick_dirty(self.current.take_dirty_rects())
+
+            # expired toast: force a full repaint that erases it (a partial
+            # blit would leave it on the panel forever)
+            if self._toast and time.monotonic() >= self._toast[1]:
+                self._toast = None
+                self.dirty = True
 
             if self._flash:                 # keep redrawing so the blink animates
                 self.dirty = True
 
-            if self.dirty:
-                self.fb.blit(self._compose())
-                self.dirty = False
+            if self._dirty:
+                self._render_frame()
 
-            time.sleep(0.02 if self._g else 0.05)
+            # Sleep the active screen's cadence (fast screens tick ~20 Hz)
+            # but never more than 50 ms, so touch stays responsive; slow
+            # screens keep today's rate — they aren't woken any more often.
+            # Dimmed / keyboard-covered screens don't tick, so don't spin.
+            if self._g:
+                time.sleep(0.02)
+            elif self.dimmed or self.keyboard is not None:
+                time.sleep(0.05)
+            else:
+                time.sleep(min(0.05, max(0.01, self.current.tick_interval / 2)))
+
+    def _fps_rect(self):
+        return (0, self.h - 16, 190, self.h)
+
+    def _render_frame(self):
+        t0 = time.perf_counter()
+        img = self._compose()
+        t1 = time.perf_counter()
+        rects = self._dirty_rects
+        if rects is not None:
+            if self.config["show_fps"]:
+                rects = rects + [self._fps_rect()]
+            if self.config["flip_180"]:
+                # boxes are y1-inclusive: row y lands on h-1-y after rotation
+                rects = [(self.w - 1 - x1, self.h - 1 - y1,
+                          self.w - 1 - x0, self.h - 1 - y0)
+                         for (x0, y0, x1, y1) in rects]
+        self.fb.blit(img, rects)
+        self._fps.frame(t1 - t0, time.perf_counter() - t1,
+                        partial=rects is not None,
+                        log=self.config["show_fps"])
+        self.dirty = False

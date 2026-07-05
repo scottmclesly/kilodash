@@ -20,6 +20,18 @@ from .base import Screen, HEADER_H
 CAP_DIR = "/opt/kilodash/captures"
 BITRATES = [1000000, 500000, 250000, 125000, 100000, 50000]
 
+FAST_TICK = 0.05        # ~20 Hz while frames are flowing
+IDLE_TICK = 0.5         # guardrail: silent/absent bus doesn't spin the CPU
+
+
+def _rx_frames(iface):
+    """Kernel RX frame counter — one cheap sysfs read, no candump needed."""
+    try:
+        with open(f"/sys/class/net/{iface}/statistics/rx_packets") as f:
+            return int(f.read())
+    except (OSError, ValueError):
+        return None
+
 
 def _sh(*cmd, timeout=6):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -79,18 +91,25 @@ class CanScreen(Screen):
 
     def __init__(self, app):
         super().__init__(app)
-        self.tick_interval = 0.7
+        self.tick_interval = IDLE_TICK
         self.iface = None
         self.rate_idx = 1                 # default 500k
         self.log_proc = None
         self.log_path = None
         self.detect_task = None
         self.status = "Detecting interface…"
+        self.rx_count = None              # displayed kernel RX frame counter
+        self.rx_rate = 0.0                # frames/s over the last second
+        self._rx_hist = []                # (t, count) samples, ≤1 s window
+        self._traffic_box = None          # dirty rect for the live counter card
 
     def on_enter(self):
         self.iface = _can_iface()
         self.status = (f"{self.iface} ready" if self.iface
                        else "No CAN iface (slcan needs slcand)")
+        self._rx_hist = []
+        self.rx_count = _rx_frames(self.iface) if self.iface else None
+        self.rx_rate = 0.0
 
     def _up(self):
         if self.iface:
@@ -134,7 +153,9 @@ class CanScreen(Screen):
             self._toggle_log()
 
     def tick(self):
-        if self.detect_task and self.detect_task.done:
+        if self.detect_task:
+            if not self.detect_task.done:
+                return False              # status text is static while detecting
             br = self.detect_task.result
             if br:
                 self.rate_idx = BITRATES.index(br)
@@ -142,8 +163,33 @@ class CanScreen(Screen):
             else:
                 self.status = "No frames — bus idle or unpowered"
             self.detect_task = None
-            return True
-        return self.detect_task is not None
+            return True                   # full redraw: status + selector moved
+
+        if not self.iface:
+            self.tick_interval = IDLE_TICK
+            return False
+
+        # live traffic counter (the responsive part of this screen)
+        now = time.monotonic()
+        rx = _rx_frames(self.iface)
+        changed = False
+        if rx is not None:
+            self._rx_hist.append((now, rx))
+            while self._rx_hist and now - self._rx_hist[0][0] > 1.0:
+                self._rx_hist.pop(0)
+            t0, c0 = self._rx_hist[0]
+            rate = (rx - c0) / (now - t0) if now > t0 else 0.0
+            if rx != self.rx_count or f"{rate:.0f}" != f"{self.rx_rate:.0f}":
+                self.rx_count, self.rx_rate = rx, rate
+                changed = True
+        # guardrail: only frames flowing keeps the fast tick; a silent or
+        # wedged bus drops back to the slow interval automatically
+        flowing = (rx is not None and len(self._rx_hist) >= 2
+                   and rx != self._rx_hist[0][1])
+        self.tick_interval = FAST_TICK if flowing else IDLE_TICK
+        if changed and self._traffic_box:
+            self.report_dirty(self._traffic_box)
+        return changed
 
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
@@ -187,6 +233,23 @@ class CanScreen(Screen):
 
         rrect(d, (14, y, w - 14, y + 40), 8, fill=th.card)
         d.text((26, y + 12), self.status[:34], font=T.font(14), fill=th.muted)
+        y += 48
+
+        # live traffic counter — the only part repainted on the fast tick
+        rrect(d, (14, y, w - 14, y + 70), 10, fill=th.card)
+        d.text((26, y + 8), "RX FRAMES", font=T.font(11, bold=True),
+               fill=th.muted)
+        live = self.tick_interval == FAST_TICK   # frames seen in the last second
+        d.ellipse((w - 42, y + 10, w - 28, y + 24),
+                  fill=th.ok if live else th.card_hi)
+        count = "—" if self.rx_count is None else f"{self.rx_count:,}"
+        d.text((26, y + 28), count, font=T.font(24, bold=True, mono=True),
+               fill=th.fg)
+        rate = f"{self.rx_rate:.0f}/s" if live else "idle"
+        rf = T.font(16, bold=True, mono=True)
+        d.text((w - 28 - d.textlength(rate, font=rf), y + 36), rate, font=rf,
+               fill=th.accent if live else th.muted)
+        self._traffic_box = (0, y - 2, w, y + 72)
 
     def _in(self, key, x, y):
         box = self._btns.get(key)

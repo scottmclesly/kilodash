@@ -113,6 +113,7 @@ class WebApp:
         self.proc = None
         self._log = None
         self._t0 = 0.0
+        self._last_probe = -1e9
 
     # ---------------------------------------------------------- introspection
     def installed(self):
@@ -173,22 +174,30 @@ class WebApp:
             self.message = str(e)[:44]
 
     def poll(self):
-        """Advance the state machine. Call once per tick. Returns True (redraw)."""
+        """Advance the state machine. Call once per tick — safe at any tick
+        rate: the TCP probe is internally throttled. Returns True only when
+        state/message changed (i.e. the banner actually needs a repaint)."""
+        before = (self.state, self.message)
+        now = time.monotonic()
         if self.state == STARTING:
-            if self.probe():
-                self.state = UP
-                self.message = "Web UI confirmed"
-            elif self.proc is not None and self.proc.poll() is not None:
-                self.state = ERROR
-                self.message = f"Process exited (code {self.proc.returncode})"
-            elif time.monotonic() - self._t0 > self.ready_timeout:
-                self.state = ERROR
-                self.message = "Timed out waiting for web UI"
+            if now - self._last_probe >= 0.5:
+                self._last_probe = now
+                if self.probe():
+                    self.state = UP
+                    self.message = "Web UI confirmed"
+                elif self.proc is not None and self.proc.poll() is not None:
+                    self.state = ERROR
+                    self.message = f"Process exited (code {self.proc.returncode})"
+                elif now - self._t0 > self.ready_timeout:
+                    self.state = ERROR
+                    self.message = "Timed out waiting for web UI"
         elif self.state == UP:
-            if not self.probe():
-                self.state = ERROR
-                self.message = "Web UI stopped responding"
-        return True
+            if now - self._last_probe >= 2.0:
+                self._last_probe = now
+                if not self.probe():
+                    self.state = ERROR
+                    self.message = "Web UI stopped responding"
+        return (self.state, self.message) != before
 
     def stop(self):
         if self.proc:
