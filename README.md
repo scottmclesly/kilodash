@@ -151,7 +151,7 @@ plugged in** (hotplug, see `devices.py`) and carry a small green "live" badge.
 
 | Screen | What it does |
 |---|---|
-| **LAN Scan** | `arp-scan` sweep of the local subnet — IP, hostname, MAC, vendor. Tap Scan to (re)run; the list scrolls. |
+| **LAN Scan** | Intent-based network diagnostics (diagnostics only — no offensive tooling). Pick a **target** (IP / hostname / CIDR) and one of four **modes**, then **Run**: <br>• **Discover** — which devices are alive on the subnet. <br>• **Ports** — is an expected port open on a host (curated common ports by default; enter your own in the Ports field). <br>• **Services** — what service + version each open port runs. <br>• **Identify** — best-effort OS guess (needs root; refuses gracefully otherwise). <br>Results stream into a scrolling pane; a badge counts discovered hosts. There is deliberately **no raw-flag entry** — the mode is the safety boundary. |
 | **Wi-Fi** | Enable/disable, scan SSIDs, tap to connect. Secured networks open the on-screen keyboard for the password; saved/open ones connect immediately. |
 | **Pi Health** | Temperature, CPU, memory, disk, uptime, Wi-Fi signal, throttling — each a labelled bar or value card. |
 | **Pomodoro** | Focus/break timer that **keeps counting on a background thread** even when you're on another screen, and toasts each transition app-wide. |
@@ -249,6 +249,7 @@ kilodash/
   pictograms.py         Semiotic-Standard tile glyphs
   touch.py              ADS7846 evdev reader + axis mapping
   system.py             network / wifi / lan / health data (+ background Task)
+  scan.py               LAN Scan safety core — intent→arg-array builder, reject-list, nmap parse/stream
   webapp.py             launch/confirm/supervise third-party web apps (Phase 4)
   devices.py            USB / bus hotplug detection (drives tile visibility)
   widgets.py            Button, on-screen Keyboard, helpers
@@ -262,6 +263,29 @@ setup/                  web-app installer, systemd units, Node-RED flow + guide
 Adding a screen: subclass `screens.base.Screen`, implement `draw_content` and
 `handle_tap`, set a `glyph` (see `pictograms.py`), and add it to
 `screens/__init__.py::SCREENS`.
+
+### LAN Scan safety model (why the rejected flags stay rejected)
+
+`scan.py` assembles every scan command from a discrete intent (mode + validated
+target + validated ports) into an **argument array** — never a shell string, so
+there is nothing to inject into. The four modes are the *entire* attack surface;
+the UI has no raw-flag input. `scan._enforce_rejects` is defense in depth: even
+if a value arrived from elsewhere, the assembled command is refused if it
+contains any of these. **Do not "helpfully" re-add them** — they exist to keep
+this a diagnostics tool:
+
+| Flag(s) | Why blocked |
+|---|---|
+| `--script`, `-sC` | NSE — nmap's offensive scripting subsystem (vuln/exploit probes). Top priority to keep unreachable. |
+| `-sS`, `-sF`, `-sX`, `-sN` | Stealth / half-open / evasion scans meant to slip past monitoring. |
+| `-A` | Aggressive — bundles NSE, OS detection and traceroute. |
+| `-D`, `-S`, `--spoof-mac` | Decoys and identity spoofing. |
+| `-f`, `--mtu`, `--data-length` | Packet fragmentation / padding for firewall evasion. |
+| `-T4`, `-T5` | Evasion-tuned aggressive timing. |
+
+Tests in `tests/` prove each mode's exact arg array and that every flag above is
+refused (`python -m unittest discover -s tests`). Full task list:
+[LAN-Scan-Refactor-TODO.md](LAN-Scan-Refactor-TODO.md).
 
 ## Roadmap
 
