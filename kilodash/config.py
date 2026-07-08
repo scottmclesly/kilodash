@@ -9,6 +9,8 @@ import copy
 import json
 import os
 
+from . import cantick
+
 CONFIG_PATH = os.environ.get("KILODASH_CONFIG", "/opt/kilodash/config.json")
 
 # Each key maps to a spec the Settings screen knows how to render:
@@ -53,6 +55,11 @@ DEFAULTS = {
                      "label": "Own AIS MMSI", "group": "System"},
     "signalk_token": {"value": "", "type": "hidden",
                       "label": "Signal K access token", "group": "System"},
+    # CanTick WiFi-CAN bridge (see PROTOCOL.md; defaults are the contract
+    # values). Managed from the CAN screen; cantick.block() merges these
+    # defaults under a partially-saved block after upgrades.
+    "cantick": {"value": dict(cantick.CONFIG_DEFAULTS), "type": "hidden",
+                "label": "CanTick bridge", "group": "System"},
 }
 
 

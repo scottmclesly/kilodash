@@ -165,13 +165,45 @@ plugged in** (hotplug, see `devices.py`) and carry a small green "live" badge.
 |---|---|---|
 | **RTL-SDR** | RTL2832U dongle | Frequency **Scan** (`rtl_power` sweep → spectrum + peak), **Identify** (`rtl_433` decodes real ISM packets and names the device), per-band knowledge hints, and IQ **Capture** (RX-only, no replay). |
 | **WiFi Sniff** | ALFA (2nd adapter) | Passive monitor-mode capture with `airodump-ng` — every AP/client it hears (SSID, channel, encryption, signal). A watchdog keeps the Pi's own uplink (`wlan0`) connected the whole time. Passive only, no injection. |
-| **CAN Bus** | CANable / gs_usb / slcan | Bring the interface up at a chosen bitrate, best-effort bitrate **autodetect**, a **live RX-frame counter + frames/s** readout, and logging to a timestamped `candump` file. |
+| **CAN Bus** | CANable / gs_usb / slcan / **CanTick (WiFi)** | Bring the interface up at a chosen bitrate, best-effort bitrate **autodetect**, a **live RX-frame counter + frames/s** readout, and logging to a timestamped `candump` file. Also hosts the **CanTick** WiFi bridge — see below. |
 | **I2C Scan** | onboard i2c-1 | `i2cdetect` on the Pi's bus with best-guess names for responding addresses. |
 | **Serial** | FTDI / CP210x / CH340 | Lists USB-serial ports and gives a read-only live view of one at a chosen baud — handy for sniffing UART/debug output. |
 | **Logic** | FX2LP (CY7C68013A) | Passive multi-channel digital capture + protocol decode (UART/I2C/SPI/CAN) via the packaged `sigrok-cli`/fx2lafw stack: 8 channels, up to 24 MHz, edge trigger, decoded annotations + per-channel activity strips. Every capture persists to `/opt/kilodash/captures/*.sr` for PulseView on a laptop. Install with [`setup/install-logic-analyzer.sh`](setup/install-logic-analyzer.sh). **3.3 V logic only** — the bare board has no input protection; series resistor / buffer / divider before probing anything near Scottina's 12 V wiring. |
 
 **Web-app launch terminals** (see below): **Kismet**, **Node-RED**, **AIS**,
 **Signal K**.
+
+### CanTick — CAN over WiFi
+
+CanTick is a small ESP32 box that clamps onto a CAN bus somewhere Scottina
+isn't, and tunnels it over WiFi. The model is deliberately boring: **it's just
+`slcan0`**. While the CAN screen is open, Scottina listens on TCP 29536; a
+CanTick dials in, `slcand` attaches the stream as a normal SocketCAN
+interface, and everything downstream — `candump`, the Node-RED SocketCAN node,
+Signal K / canboatjs for NMEA2000 — reads `slcan0` with zero
+interface-specific changes. The link is supervised: if the CanTick drops off
+WiFi, it's torn down and re-armed so the next dial-in reconnects with no
+restart. A read-only UDP heartbeat (port 29537, every 2 s) drives the health
+card at the bottom of the CAN screen: device name, mode
+(normal/listen/closed), RSSI, live rx/s, a fresh/stale badge, and a loud
+**DROP** warning when the bus starts out-running the bridge. The full contract
+is [`PROTOCOL.md`](PROTOCOL.md); scope is diagnostics + normal CAN
+participation only, and **listen-only is enforced on the device itself**.
+
+**Provisioning quick-start:** plug a factory-fresh CanTick into the Pi's USB,
+open the CAN screen, tap **Provision**. Scottina pushes its *current* WiFi
+credentials (primary slot), a generated fallback-AP credential pair
+(fallback slot), the bus bitrate and the listen-only flag over the CDC serial
+port, then verifies with `GET_STATUS`. PSKs are never logged. Unplug; on next
+boot the CanTick joins the network and dials in.
+
+**AP fallback:** if the Pi has *no uplink at all* when the CAN screen opens
+(off-grid diagnostics), it raises a WPA2 AP `Scottina-CanTick` on `wlan0`
+(gateway `192.168.42.1`, DHCP, `scottina.local`) so provisioned CanTicks can
+still reach it via their fallback slot. The AP is fully reversible — closing
+the screen (or the uplink returning) tears it down and hands `wlan0` back to
+NetworkManager. `wlan1`/ALFA is never touched. Needs `hostapd` + `dnsmasq`
+installed; without them the fallback simply reports itself unavailable.
 
 ## Live screens & responsiveness
 

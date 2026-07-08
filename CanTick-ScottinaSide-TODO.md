@@ -16,6 +16,33 @@ in PROTOCOL.md §1 — never an arbitrary shell string built from device-supplie
 
 ---
 
+## Status — 2026-07-08 (branch `cantick-integration`)
+
+Implemented and verified on this Pi (fake CanTick: local TCP client + UDP
+heartbeat): Phases 1, 2, 3, 6 and the code for 4 and 5. Loopback proof passed:
+`candump slcan0` shows dialed-in frames; TCP drop → supervised relaunch →
+reconnect works; teardown leaves nothing; heartbeat freshness + `v:2` warning
+fire. 35 unit tests in `tests/test_cantick.py` pin the §1 argv, CRC/framing,
+heartbeat and AP-config generation.
+
+**Deviations / still open (needs the real hardware or a decision):**
+
+- **`PROTOCOL.md` was NOT on this machine** and is not fetchable from here.
+  The copy at the repo root is **reconstructed from this TODO** — drop in the
+  authoritative one and diff it (CRC-coverage and reply-framing assumptions
+  are marked in it).
+- **`hostapd` is not installed** (dnsmasq is). Phase-5 code is in place and
+  refuses gracefully; `sudo apt install hostapd` (and mask its service) to
+  arm it. Not installed silently, per Phase 0.
+- Phase-0 findings: `wlan0` is **NetworkManager**-managed (creds path =
+  `nmcli`); the PHASE2 "uplink watchdog" is the per-screen guard thread in
+  `wifisniff.py`/`kismet.py` (not running while the CAN screen is open) — the
+  standing reconnector is NM autoconnect, so AP "pause/resume" =
+  unmanage/re-manage `wlan0` with prior state recorded.
+- Bench-only items outstanding (§7): provisioning round-trip against a real
+  CanTick, AP fallback cycle with a real client, listen-only scope check on
+  the transceiver, Node-RED/Signal K reads against a live WiFi bridge.
+
 ## 0. Preconditions (do first, verify before writing code)
 
 - [ ] Confirm `PROTOCOL.md` exists at the kilodash repo root; read it fully.

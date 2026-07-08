@@ -9,6 +9,8 @@ import glob
 import os
 import time
 
+from . import cantick
+
 # (vendor, product) USB ids we care about
 SDR_IDS = {(0x0bda, 0x2838), (0x0bda, 0x2832)}      # RTL2832U dongles
 ALFA_IDS = {(0x0e8d, 0x7612)}                       # MediaTek MT7612U (ALFA ACM)
@@ -27,6 +29,10 @@ FX2LA_IDS = {(0x04b4, 0x8613),                      # Cypress FX2 bootloader
              (0x1d50, 0x608c), (0x1d50, 0x608d),    # fx2lafw (post-load)
              (0x0925, 0x3881),                      # Saleae Logic clone EEPROM
              (0x08a9, 0x0014)}                      # USBee AX clone EEPROM
+# CanTick (ESP32-family CDC, PROTOCOL.md §4). Espressif's VID is shared by
+# every ESP32 board, so require the product string to say "CanTick" when the
+# descriptor provides one; a string-less descriptor still counts (early fw).
+CANTICK_VID = 0x303a
 
 
 def _usb_ids():
@@ -46,8 +52,44 @@ def _iface(name):
     return os.path.exists(f"/sys/class/net/{name}")
 
 
+def _cantick_usb_base():
+    """sysfs device dir of a plugged-in CanTick (VID 0x303A + product match),
+    or None."""
+    for vp in glob.glob("/sys/bus/usb/devices/*/idVendor"):
+        try:
+            if int(open(vp).read().strip(), 16) != CANTICK_VID:
+                continue
+        except (OSError, ValueError):
+            continue
+        base = os.path.dirname(vp)
+        try:
+            product = open(os.path.join(base, "product")).read().strip()
+        except OSError:
+            product = ""
+        if not product or "cantick" in product.lower():
+            return base
+    return None
+
+
+def cantick_tty():
+    """/dev path of the CanTick's CDC serial port, or None."""
+    base = _cantick_usb_base()
+    if not base:
+        return None
+    for pat in ("/*/tty/ttyACM*", "/*/ttyACM*"):
+        for p in glob.glob(base + pat):
+            return "/dev/" + os.path.basename(p)
+    return None
+
+
 def _can_present(ids):
-    if glob.glob("/sys/class/net/can*"):
+    # slcan* covers a WiFi CanTick once slcand has attached; link_active()
+    # keeps the CAN screen alive while the link is still WAITING for a
+    # dial-in (no kernel iface exists yet) — without it app.py's hotplug
+    # check would bounce the user back to Home mid-session.
+    if glob.glob("/sys/class/net/can*") or glob.glob("/sys/class/net/slcan*"):
+        return True
+    if cantick.link_active():
         return True
     return bool(ids & CANABLE_IDS)
 
@@ -85,6 +127,8 @@ class Devices:
             p.add("i2c")
         if ids & FX2LA_IDS:
             p.add("la")
+        if _cantick_usb_base():
+            p.add("cantick")            # provisioning affordance (CAN screen)
         self.present = p
         return p
 
