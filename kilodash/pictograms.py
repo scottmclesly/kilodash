@@ -108,6 +108,16 @@ def _serial(d, cx, cy, r, c):
     d.polygon([(cx + r, cy - h), (cx + r, cy + h), (cx + r * 0.25, cy)], fill=c)
 
 
+def _logic(d, cx, cy, r, c):
+    """Square-wave trace: the analyzer's captured window."""
+    lw = _lw(r)
+    hi, lo = cy - r * 0.5, cy + r * 0.5
+    xs = [cx - r, cx - r * 0.45, cx + r * 0.1, cx + r * 0.55, cx + r]
+    d.line([(xs[0], lo), (xs[1], lo), (xs[1], hi), (xs[2], hi),
+            (xs[2], lo), (xs[3], lo), (xs[3], hi), (xs[4], hi)],
+           fill=c, width=lw, joint="curve")
+
+
 def _kismet(d, cx, cy, r, c):
     """Sweep scope with a contact."""
     lw = _lw(r)
@@ -184,6 +194,7 @@ _GLYPHS = {
     "can": _can,
     "i2c": _i2c,
     "serial": _serial,
+    "logic": _logic,
     "kismet": _kismet,
     "nodered": _nodered,
     "ais": _ais,

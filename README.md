@@ -121,7 +121,9 @@ Core dependencies (already present on this build): `python3-pil`,
 `python3-pygame` is **not** used. The web-app backends (Node-RED, AIS-catcher,
 Signal K) and the SDR/Wi-Fi tools install separately — see
 [Web-app launch terminal](#web-app-launch-terminal) and
-[`setup/install-phase4.sh`](setup/install-phase4.sh).
+[`setup/install-phase4.sh`](setup/install-phase4.sh). The logic-analyzer
+stack (sigrok-cli + fx2lafw firmware + udev/group setup) installs with
+[`setup/install-logic-analyzer.sh`](setup/install-logic-analyzer.sh).
 
 ## Using it
 
@@ -166,6 +168,7 @@ plugged in** (hotplug, see `devices.py`) and carry a small green "live" badge.
 | **CAN Bus** | CANable / gs_usb / slcan | Bring the interface up at a chosen bitrate, best-effort bitrate **autodetect**, a **live RX-frame counter + frames/s** readout, and logging to a timestamped `candump` file. |
 | **I2C Scan** | onboard i2c-1 | `i2cdetect` on the Pi's bus with best-guess names for responding addresses. |
 | **Serial** | FTDI / CP210x / CH340 | Lists USB-serial ports and gives a read-only live view of one at a chosen baud — handy for sniffing UART/debug output. |
+| **Logic** | FX2LP (CY7C68013A) | Passive multi-channel digital capture + protocol decode (UART/I2C/SPI/CAN) via the packaged `sigrok-cli`/fx2lafw stack: 8 channels, up to 24 MHz, edge trigger, decoded annotations + per-channel activity strips. Every capture persists to `/opt/kilodash/captures/*.sr` for PulseView on a laptop. Install with [`setup/install-logic-analyzer.sh`](setup/install-logic-analyzer.sh). **3.3 V logic only** — the bare board has no input protection; series resistor / buffer / divider before probing anything near Scottina's 12 V wiring. |
 
 **Web-app launch terminals** (see below): **Kismet**, **Node-RED**, **AIS**,
 **Signal K**.

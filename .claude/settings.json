@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m unittest discover -s tests -v)",
+      "Bash(chmod +x /opt/kilodash/setup/install-logic-analyzer.sh)",
+      "Bash(bash -n /opt/kilodash/setup/install-logic-analyzer.sh)",
+      "Bash(python3 -m unittest discover -s tests)",
+      "Bash(python3 /tmp/claude-1000/-opt-kilodash/88da7f11-58ba-4ebd-9ed8-3f0c5124aa8a/scratchpad/smoke_logic.py)",
+      "Bash(python3 -m py_compile kilodash/la.py kilodash/devices.py kilodash/pictograms.py kilodash/screens/logic.py kilodash/screens/__init__.py tests/test_la.py)"
+    ]
+  }
+}

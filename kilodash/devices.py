@@ -17,6 +17,16 @@ CANABLE_IDS = {(0x1d50, 0x606f), (0x16d0, 0x117e),  # candleLight / gs_usb
 FTDI_IDS = {(0x0403, 0x6001), (0x0403, 0x6015),     # FTDI
             (0x10c4, 0xea60),                        # CP210x
             (0x1a86, 0x7523), (0x1a86, 0x55d4)}      # CH340 / CH9102
+# FX2LP logic analyzer (sigrok/fx2lafw). The ID is NOT fixed: match both the
+# bare-bootloader ID and the post-firmware-load IDs — a board scanned once
+# this session sits in its fx2lafw-enumerated state. Phase 0 bench work
+# records the board's true ID; if it enumerates as something else, add the
+# pair here. Deliberately a cheap VID/PID check — never poll
+# `sigrok-cli --scan` for liveness (its firmware upload is too heavy).
+FX2LA_IDS = {(0x04b4, 0x8613),                      # Cypress FX2 bootloader
+             (0x1d50, 0x608c), (0x1d50, 0x608d),    # fx2lafw (post-load)
+             (0x0925, 0x3881),                      # Saleae Logic clone EEPROM
+             (0x08a9, 0x0014)}                      # USBee AX clone EEPROM
 
 
 def _usb_ids():
@@ -73,6 +83,8 @@ class Devices:
             p.add("serial")
         if os.path.exists("/dev/i2c-1"):
             p.add("i2c")
+        if ids & FX2LA_IDS:
+            p.add("la")
         self.present = p
         return p
 
