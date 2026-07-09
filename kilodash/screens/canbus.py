@@ -152,7 +152,9 @@ class CanScreen(Screen):
             self.hb = cantick.HeartbeatListener(
                 port=blk["hb_port"],
                 expected_version=blk["expected_contract_version"])
-        if self.link is None:
+        if self.link is None or self.link.state == cantick.CanTickLink.STOPPED:
+            # rebuild from current config — bitrate/port edits apply on the
+            # next screen entry, not only after a UI restart
             try:
                 self.link = cantick.CanTickLink(iface=blk["slcan_iface"],
                                                 tcp_port=blk["tcp_port"],
@@ -217,12 +219,23 @@ class CanScreen(Screen):
         self.prov_task = system.Task(_provision, port, self.app.config,
                                      self.ct_blk)
 
+    def _pick_iface(self):
+        """The interface this screen watches. While the CanTick WiFi link is
+        up, its slcan iface IS the selected source — a USB dongle may coexist
+        on the bench (and would otherwise win the alphabetical glob)."""
+        if (self.ct_blk["enabled"] and self.link
+                and self.link.state == cantick.CanTickLink.UP
+                and os.path.isdir(
+                    f"/sys/class/net/{self.ct_blk['slcan_iface']}")):
+            return self.ct_blk["slcan_iface"]
+        return _can_iface()
+
     # --------------------------------------------------------------- lifecycle
     def on_enter(self):
         self.ct_blk = cantick.block(self.app.config)
         if self.ct_blk["enabled"]:
             self._ct_start()
-        self.iface = _can_iface()
+        self.iface = self._pick_iface()
         self.status = (f"{self.iface} ready" if self.iface
                        else "CanTick listening…" if self.ct_blk["enabled"]
                        else "No CAN iface (slcan needs slcand)")
@@ -281,13 +294,16 @@ class CanScreen(Screen):
         """CanTick housekeeping; True if the health card needs a repaint."""
         if not self.ct_blk["enabled"]:
             return False
-        # a CanTick dialing in creates slcan0 after the screen was entered
-        if not self.iface:
-            self.iface = _can_iface()
-            if self.iface:
-                self.status = f"{self.iface} ready"
-                self.rx_count = _rx_frames(self.iface)
-                return True
+        # a CanTick dialing in (or dropping) can change the watched iface
+        # after the screen was entered
+        iface = self._pick_iface()
+        if iface != self.iface:
+            self.iface = iface
+            self._rx_hist = []
+            self.rx_count = _rx_frames(iface) if iface else None
+            if iface:
+                self.status = f"{iface} ready"
+            return True
         # provisioning result
         if self.prov_task and self.prov_task.done:
             res = self.prov_task.result or (False, str(self.prov_task.error))
