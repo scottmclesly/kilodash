@@ -476,9 +476,12 @@ def frame(body):
 
 
 def parse_reply(line):
-    """Parse a device reply into (kind, fields). Tolerates framed
-    (CTK1|…|CRC=xxxx) and bare replies; a framed reply with a BAD CRC returns
-    (None, {}). kind is the first token (ACK/NAK/STATUS); fields are k=v."""
+    """Parse a device reply into (kind, fields). Bench-observed grammar
+    (fw 0.1.0): `CTK1|STATUS|name=…|fw=…|prov=1` — pipe-separated k=v fields,
+    NO CRC trailer on replies (commands are CRC-checked, replies aren't).
+    Tolerates space-separated fields, bare (unframed) replies, and an
+    optional |CRC=xxxx trailer — which IS verified when present; a framed
+    reply with a bad CRC returns (None, {})."""
     if isinstance(line, bytes):
         line = line.decode("utf-8", errors="replace")
     line = (line or "").strip()
@@ -486,15 +489,16 @@ def parse_reply(line):
         return None, {}
     if line.startswith("CTK1|"):
         body, sep, tail = line.rpartition("|CRC=")
-        if not sep:
-            return None, {}
-        try:
-            if crc16_ccitt_false(body.encode()) != int(tail, 16):
+        if sep:
+            try:
+                if crc16_ccitt_false(body.encode()) != int(tail, 16):
+                    return None, {}
+            except ValueError:
                 return None, {}
-        except ValueError:
-            return None, {}
-        line = body[len("CTK1|"):]
-    parts = line.split()
+            line = body[len("CTK1|"):]
+        else:
+            line = line[len("CTK1|"):]
+    parts = [p for p in re.split(r"[|\s]+", line) if p]
     kind = parts[0] if parts else None
     fields = {}
     for p in parts[1:]:
@@ -560,8 +564,15 @@ class CanTickProvisioner:
                   "COMMIT"]
         try:
             import serial               # pyserial, present on this image
-            with serial.Serial(self.port, 115200,
-                               timeout=self.timeout) as ser:
+            ser = serial.Serial()
+            ser.port, ser.baudrate, ser.timeout = self.port, 115200, \
+                self.timeout
+            # bench-proven: a default open asserts DTR/RTS and HARD-RESETS
+            # the ESP32-S3 through its USB-JTAG reset circuit
+            ser.dtr = False
+            ser.rts = False
+            ser.open()
+            with ser:
                 for body in bodies:
                     verb = body.split()[0]
                     kind, fields = self._xfer(ser, body)
@@ -581,9 +592,16 @@ class CanTickProvisioner:
 
     def _xfer(self, ser, body):
         for attempt in (0, 1):
+            ser.reset_input_buffer()
             ser.write(frame(body))
             ser.flush()
-            kind, fields = parse_reply(ser.readline())
+            # the firmware interleaves log noise on the same port — read a
+            # few lines until one parses as a protocol reply
+            kind, fields = None, {}
+            for _ in range(5):
+                kind, fields = parse_reply(ser.readline())
+                if kind in ("ACK", "NAK", "STATUS"):
+                    break
             if kind == "NAK" and fields.get("err") == "crc" and attempt == 0:
                 log.info("cantick prov: NAK err=crc on %s, retrying",
                          body.split()[0])
@@ -619,6 +637,7 @@ class CanTickAP:
         self.gateway = str(ipaddress.IPv4Address(gateway))
         self.active = False
         self._prior_managed = True
+        self._prior_connection = ""
         self._procs = []
 
     # ---- state probes ----
@@ -638,6 +657,7 @@ class CanTickAP:
     def hostapd_conf(self):
         return (f"interface={self.IFACE}\n"
                 "driver=nl80211\n"
+                "country_code=US\n"
                 f"ssid={self.ssid}\n"
                 "hw_mode=g\n"
                 "channel=6\n"
@@ -656,6 +676,53 @@ class CanTickAP:
                 f"dhcp-option=option:router,{self.gateway}\n"
                 f"address=/scottina.local/{self.gateway}\n")
 
+    def _nm_state(self):
+        """NM device state line, e.g. '100 (connected)' / '10 (unmanaged)'."""
+        return _sh("nmcli", "-t", "-g", "GENERAL.STATE",
+                   "device", "show", self.IFACE).stdout.strip()
+
+    def _wait_nm(self, pred, timeout):
+        """Wait until a NM device-state predicate holds. nmcli returns before
+        NM finishes acting (bench-proven: NM's async release after
+        `managed no` yanked the iface down under an already-beaconing
+        hostapd), so every management handover is confirmed, not assumed."""
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            if pred(self._nm_state()):
+                return True
+            time.sleep(0.3)
+        return False
+
+    @staticmethod
+    def _nm_ready(state):
+        """Device is managed and activatable: numeric state >= 30
+        (disconnected); 10=unmanaged, 20=unavailable both reject."""
+        try:
+            return int(state.split()[0].rstrip(":")) >= 30
+        except (ValueError, IndexError):
+            return False
+
+    def _wait_ap_mode(self, timeout):
+        """True once `iw` reports the iface in AP mode with our SSID —
+        beaconing is the success signal, not 'hostapd is still running'."""
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            if self._procs and self._procs[0].poll() is not None:
+                return False                    # hostapd already gave up
+            info = _sh("iw", "dev", self.IFACE, "info").stdout
+            if "type AP" in info and f"ssid {self.ssid}" in info:
+                return True
+            time.sleep(0.4)
+        return False
+
+    def _hostapd_log_tail(self, lines=6):
+        try:
+            with open(os.path.join(RUN_DIR, "hostapd.log")) as f:
+                tail = f.read().strip().splitlines()[-lines:]
+            return " | ".join(tail) or "(empty log)"
+        except OSError as e:
+            return f"(no log: {e})"
+
     # ---- lifecycle ----
     def start(self):
         """Returns (ok, message). Refuses (False, why) rather than raising for
@@ -670,8 +737,12 @@ class CanTickAP:
         state = _sh("nmcli", "-t", "-g", "GENERAL.STATE",
                     "device", "show", self.IFACE).stdout.lower()
         self._prior_managed = "unmanaged" not in state
-        log.info("cantick AP: starting on %s (prior managed=%s)",
-                 self.IFACE, self._prior_managed)
+        # record the exact active profile (if any) so stop() restores it
+        self._prior_connection = _sh(
+            "nmcli", "-t", "-g", "GENERAL.CONNECTION",
+            "device", "show", self.IFACE).stdout.strip()
+        log.info("cantick AP: starting on %s (prior managed=%s conn=%r)",
+                 self.IFACE, self._prior_managed, self._prior_connection)
         try:
             os.makedirs(RUN_DIR, exist_ok=True)
             hpath = os.path.join(RUN_DIR, "hostapd.conf")
@@ -682,31 +753,57 @@ class CanTickAP:
                              0o600)                     # confs hold the PSK
                 with os.fdopen(fd, "w") as f:
                     f.write(text)
+            # order matters (bench-proven): disconnect FIRST so wpa_supplicant
+            # releases the radio — unmanaging mid-association races the
+            # supplicant's teardown against hostapd's setup and can flip the
+            # iface back to managed under hostapd's feet
+            _sh("nmcli", "device", "disconnect", self.IFACE, timeout=15)
             _sh("nmcli", "device", "set", self.IFACE, "managed", "no")
-            _sh("ip", "addr", "flush", "dev", self.IFACE)
-            _sh("ip", "addr", "add", f"{self.gateway}/24", "dev", self.IFACE)
-            _sh("ip", "link", "set", self.IFACE, "up")
-            self._procs = [
-                subprocess.Popen(["hostapd", hpath],
-                                 stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL),
+            # …and confirm NM actually released the device (state 10) before
+            # hostapd touches it, or NM's deferred cleanup kills the AP
+            if not self._wait_nm(lambda s: s.startswith("10"), 8.0):
+                raise CanTickError("NetworkManager did not release "
+                                   + self.IFACE)
+            # the state flip is NOT the end of the release: NM/wpa_supplicant
+            # netdev cleanup (a late link-down) can land seconds later and
+            # knocked a beaconing hostapd off the air on the bench. A settle
+            # beat plus ONE relaunch absorbs it deterministically.
+            time.sleep(1.5)
+            for attempt in (1, 2):
+                _sh("ip", "link", "set", self.IFACE, "down")
+                _sh("ip", "addr", "flush", "dev", self.IFACE)
+                _sh("ip", "addr", "add", f"{self.gateway}/24",
+                    "dev", self.IFACE)
+                # hostapd owns bringing the iface up in AP mode
+                hlog = open(os.path.join(RUN_DIR, "hostapd.log"), "w")
+                self._procs = [subprocess.Popen(["hostapd", hpath],
+                                                stdout=hlog, stderr=hlog)]
+                hlog.close()
+                if self._wait_ap_mode(10.0):
+                    break
+                tail = self._hostapd_log_tail()
+                self._kill_procs()
+                if attempt == 2:
+                    raise CanTickError("hostapd did not reach AP mode: "
+                                       + tail)
+                log.info("cantick AP: hostapd knocked down during radio "
+                         "handover; relaunching")
+                time.sleep(1.5)
+            self._procs.append(
                 subprocess.Popen(["dnsmasq", f"--conf-file={dpath}",
                                   "--keep-in-foreground", "--pid-file="],
                                  stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL),
-            ]
-            time.sleep(1.0)
-            dead = [p.args[0] for p in self._procs if p.poll() is not None]
-            if dead:
-                raise CanTickError(f"{os.path.basename(str(dead[0]))} exited")
+                                 stderr=subprocess.DEVNULL))
+            time.sleep(0.5)
+            if self._procs[1].poll() is not None:
+                raise CanTickError("dnsmasq exited")
         except Exception as e:          # noqa: BLE001 — must never strand wlan0
             self.stop()
             return False, f"AP failed: {e}"
         self.active = True
         return True, f"AP up: {self.ssid} @ {self.gateway}"
 
-    def stop(self):
-        """Full reversal — safe to call at any point, any number of times."""
+    def _kill_procs(self):
         for p in self._procs:
             try:
                 p.terminate()
@@ -717,12 +814,32 @@ class CanTickAP:
                 except OSError:
                     pass
         self._procs = []
+
+    def stop(self):
+        """Full reversal — safe to call at any point, any number of times."""
+        self._kill_procs()
+        _sh("ip", "link", "set", self.IFACE, "down")
+        _sh("iw", "dev", self.IFACE, "set", "type", "managed")
         _sh("ip", "addr", "flush", "dev", self.IFACE)
         if self._prior_managed:
             # restoring management resumes NM autoconnect — the uplink
-            # watchdog picks wlan0 back up from here
+            # watchdog picks wlan0 back up from here. The explicit connect
+            # clears the `device disconnect` autoconnect block from start().
             _sh("nmcli", "device", "set", self.IFACE, "managed", "yes")
-        for name in ("hostapd.conf", "dnsmasq.conf"):
+            # wait until NM has re-owned the device AND the radio is past
+            # 'unavailable' (20) — an activation attempt during that window
+            # fails, which is how the bench run stranded wlan0 disconnected
+            self._wait_nm(self._nm_ready, 15.0)
+            if self._prior_connection:
+                r = _sh("nmcli", "connection", "up", self._prior_connection,
+                        "ifname", self.IFACE, timeout=45)
+            else:
+                r = _sh("nmcli", "device", "connect", self.IFACE, timeout=45)
+            if r.returncode != 0:           # fresh radio, empty scan cache
+                _sh("nmcli", "device", "wifi", "rescan", timeout=15)
+                self._wait_nm(self._nm_ready, 10.0)
+                _sh("nmcli", "device", "connect", self.IFACE, timeout=45)
+        for name in ("hostapd.conf", "dnsmasq.conf", "hostapd.log"):
             try:
                 os.unlink(os.path.join(RUN_DIR, name))
             except OSError:

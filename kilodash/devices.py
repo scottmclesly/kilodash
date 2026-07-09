@@ -30,9 +30,12 @@ FX2LA_IDS = {(0x04b4, 0x8613),                      # Cypress FX2 bootloader
              (0x0925, 0x3881),                      # Saleae Logic clone EEPROM
              (0x08a9, 0x0014)}                      # USBee AX clone EEPROM
 # CanTick (ESP32-family CDC, PROTOCOL.md §4). Espressif's VID is shared by
-# every ESP32 board, so require the product string to say "CanTick" when the
-# descriptor provides one; a string-less descriptor still counts (early fw).
+# every ESP32 board, so match the product string — but bench reality: the
+# ESP32-S3's built-in USB serial reports the FIXED hardware string
+# "USB JTAG/serial debug unit" (PID 0x1001), not the firmware's name, so
+# that string counts as a CanTick too. A string-less descriptor also counts.
 CANTICK_VID = 0x303a
+_CANTICK_PRODUCTS = ("cantick", "usb jtag/serial")
 
 
 def _usb_ids():
@@ -66,7 +69,8 @@ def _cantick_usb_base():
             product = open(os.path.join(base, "product")).read().strip()
         except OSError:
             product = ""
-        if not product or "cantick" in product.lower():
+        if not product or any(p in product.lower()
+                              for p in _CANTICK_PRODUCTS):
             return base
     return None
 
@@ -91,6 +95,9 @@ def _can_present(ids):
         return True
     if cantick.link_active():
         return True
+    if _cantick_usb_base():
+        return True         # CanTick on USB: screen must be reachable to
+                            # provision it (and to host the WiFi link)
     return bool(ids & CANABLE_IDS)
 
 

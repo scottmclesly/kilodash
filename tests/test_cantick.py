@@ -96,7 +96,18 @@ class TestCrcAndFraming(unittest.TestCase):
 
     def test_parse_reply_garbage(self):
         self.assertEqual(cantick.parse_reply(b""), (None, {}))
-        self.assertEqual(cantick.parse_reply(b"CTK1|half"), (None, {}))
+        self.assertEqual(cantick.parse_reply(b"CTK1|"), (None, {}))
+
+    def test_parse_reply_real_firmware(self):
+        # verbatim reply observed from fw 0.1.0 on the bench: pipe-separated
+        # fields, framed but with NO CRC trailer on replies
+        line = (b"CTK1|STATUS|name=cantick-000000|fw=0.1.0|wifi=connected"
+                b"|ip=192.168.0.71|prov=1\n")
+        kind, fields = cantick.parse_reply(line)
+        self.assertEqual(kind, "STATUS")
+        self.assertEqual(fields, {"name": "cantick-000000", "fw": "0.1.0",
+                                  "wifi": "connected", "ip": "192.168.0.71",
+                                  "prov": "1"})
 
     def test_set_creds_body_base64(self):
         body = cantick.set_creds_body("primary", "MyBoat", "s3cret pw")

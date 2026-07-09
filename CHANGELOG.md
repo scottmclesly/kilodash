@@ -5,6 +5,21 @@ All notable changes to Scottina are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **CanTick WiFi-CAN bridge** (`kilodash/cantick.py`, contract in
+  `PROTOCOL.md`): a CanTick dialing in over WiFi appears as an ordinary
+  `slcan0` — supervised `socat`+`slcand` pair on TCP 29536 with automatic
+  relaunch/backoff, read-only UDP 29537 heartbeat (freshness badge, live rx/s,
+  drop-rising warning, contract-version check), one-time USB provisioning
+  push (CTK1 framing, CRC-16/CCITT-FALSE, base64 creds, PSKs never logged),
+  and a reversible `hostapd`+`dnsmasq` fallback AP on `wlan0` for
+  no-uplink diagnostics (`Scottina-CanTick` @ 192.168.42.1, bench-proven
+  full up/restore cycle). CAN screen gains a CanTick source chip, a
+  heartbeat health card, and a Provision button when a CanTick is on USB.
+
 ## [1.0.0] — 2026-07-05
 
 First release. **Scottina** — the digital Swiss Army knife for hardware

@@ -73,9 +73,16 @@ CTK1|<BODY>|CRC=XXXX\n
 
 - `XXXX` — 4 uppercase hex digits of **CRC-16/CCITT-FALSE** (poly `0x1021`,
   init `0xFFFF`, no reflection, xorout `0x0000`) computed over **everything
-  before `|CRC=`**, i.e. including the `CTK1|` prefix *(assumed — verify;
-  check value for `"123456789"` is `0x29B1`)*.
+  before `|CRC=`**, i.e. including the `CTK1|` prefix *(bench-confirmed:
+  fw 0.1.0 accepts commands framed this way; check value for `"123456789"`
+  is `0x29B1`)*.
 - `ssid` / `psk` values are **base64-encoded** inside the body.
+- **USB caveat (bench-observed):** the CanTick enumerates as the ESP32-S3's
+  built-in `303a:1001 "USB JTAG/serial debug unit"` — the firmware's product
+  name does not appear. Opening the port with DTR/RTS asserted (pyserial
+  default) **hard-resets the device**; hosts must open with DTR=RTS=false.
+  The firmware also interleaves log lines on the same port — readers must
+  skip lines that don't parse as protocol replies.
 
 Commands (BODY):
 
@@ -87,10 +94,19 @@ COMMIT
 GET_STATUS
 ```
 
-Replies: `ACK …`, `NAK err=<reason>`, `STATUS <k=v …>` — same `CTK1|` framing
-*(assumed; the Pi parser also tolerates unframed replies)*. On `NAK err=crc`
-the sender retries the command once. `STATUS` after a successful `COMMIT`
-reports `prov=1`. `STATUS` never contains a PSK; neither side logs one.
+Replies *(bench-observed, fw 0.1.0)*: `CTK1|<KIND>|k=v|k=v…\n` —
+**pipe-separated** fields and **no CRC trailer** on replies (only commands
+are CRC-checked). Observed verbatim:
+
+```
+CTK1|STATUS|name=cantick-000000|fw=0.1.0|wifi=connected|ip=192.168.0.71|prov=1
+```
+
+`KIND` is `ACK`, `NAK err=<reason>`, or `STATUS`. On `NAK err=crc` the sender
+retries the command once. `STATUS` after a successful `COMMIT` reports
+`prov=1`. `STATUS` never contains a PSK; neither side logs one. (The Pi
+parser also tolerates space-separated fields, unframed replies, and a
+`|CRC=xxxx` trailer — verified when present.)
 
 ## §5 — AP fallback
 
