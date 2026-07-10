@@ -178,6 +178,19 @@ def _health(d, cx, cy, r, c):
     d.rectangle((cx - a, cy - b, cx + a, cy + b), fill=c)
 
 
+def _files(d, cx, cy, r, c):
+    """Offload: arrow descending into an open tray (USB stick exchange)."""
+    lw = _lw(r)
+    x0, x1 = cx - r * 0.75, cx + r * 0.75
+    yt, yb = cy + r * 0.2, cy + r * 0.85
+    for seg in ((x0, yt, x0, yb), (x0, yb, x1, yb), (x1, yb, x1, yt)):
+        d.line(seg, fill=c, width=lw)
+    d.line((cx, cy - r * 0.9, cx, cy + r * 0.1), fill=c, width=lw)
+    aw = r * 0.32
+    d.polygon((cx - aw, cy + 0.05 * r, cx + aw, cy + 0.05 * r,
+               cx, cy + 0.5 * r), fill=c)
+
+
 def _settings(d, cx, cy, r, c):
     """Maintenance: ring with radial adjustment ticks."""
     lw = _lw(r)
@@ -195,6 +208,7 @@ _GLYPHS = {
     "i2c": _i2c,
     "serial": _serial,
     "logic": _logic,
+    "files": _files,
     "kismet": _kismet,
     "nodered": _nodered,
     "ais": _ais,

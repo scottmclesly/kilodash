@@ -170,6 +170,7 @@ plugged in** (hotplug, see `devices.py`) and carry a small green "live" badge.
 | **I2C Scan** | onboard i2c-1 | `i2cdetect` on the Pi's bus with best-guess names for responding addresses. |
 | **Serial** | FTDI / CP210x / CH340 | Lists USB-serial ports and gives a read-only live view of one at a chosen baud — handy for sniffing UART/debug output. |
 | **Logic** | FX2LP (CY7C68013A) | Passive multi-channel digital capture + protocol decode (UART/I2C/SPI/CAN) via the packaged `sigrok-cli`/fx2lafw stack: 8 channels, up to 24 MHz, edge trigger, decoded annotations + per-channel activity strips. Every capture persists to `/opt/kilodash/captures/*.sr` for PulseView on a laptop. Install with [`setup/install-logic-analyzer.sh`](setup/install-logic-analyzer.sh); full user guide: [docs/LOGICANALISER.md](docs/LOGICANALISER.md). **3.3 V logic only** — the bare board has no input protection; series resistor / buffer / divider before probing anything near Scottina's 12 V wiring. |
+| **Files** | USB stick | **Offload logs without a laptop:** plug in any USB stick and copy captures (`candump` logs, `.sr`, IQ, sniffs) from `/opt/kilodash/captures/` onto it — one per tap or all at once — with a sync-then-**Eject** button so it's always safe to pull. Also exchanges **CAN decode tables** (DBC, NMEA2000/canboat) between the stick and `/opt/kilodash/tables/`, where decoding tools read them. Copies never delete the originals. Full user guide: [docs/FILES.md](docs/FILES.md). |
 
 **Web-app launch terminals** (see below): **Kismet**, **Node-RED**, **AIS**,
 **Signal K**.

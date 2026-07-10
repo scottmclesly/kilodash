@@ -55,6 +55,51 @@ def _iface(name):
     return os.path.exists(f"/sys/class/net/{name}")
 
 
+# Where the Files screen mounts an offload stick (see screens/files.py)
+USB_MOUNT = "/media/usb"
+
+
+def _mounted_devs():
+    """dev node -> mountpoint for every mounted block device."""
+    m = {}
+    try:
+        with open("/proc/mounts") as f:
+            for line in f:
+                dev, mnt = line.split()[:2]
+                if dev.startswith("/dev/"):
+                    m[dev] = mnt
+    except OSError:
+        pass
+    return m
+
+
+def usb_stick_partitions():
+    """Candidate partitions of the first free USB mass-storage disk (the
+    whole disk if unpartitioned), or []. A disk already backing a system
+    mount — a USB-SSD rootfs, say — is never offered: only free media count
+    as offload sticks. The Files screen tries the candidates in order and
+    keeps the first that mounts writable (installer sticks lead with a
+    read-only iso9660 partition)."""
+    mounts = _mounted_devs()
+    for disk in sorted(glob.glob("/sys/block/sd*")):
+        if "/usb" not in os.path.realpath(disk):
+            continue
+        name = os.path.basename(disk)
+        parts = sorted(glob.glob(os.path.join(disk, name + "*")))
+        nodes = ["/dev/" + os.path.basename(p) for p in parts] \
+            or ["/dev/" + name]
+        if any(mounts.get(n) not in (None, USB_MOUNT) for n in nodes):
+            continue
+        return nodes
+    return []
+
+
+def usb_stick_partition():
+    """First candidate partition (presence check for the `usbstick` key)."""
+    parts = usb_stick_partitions()
+    return parts[0] if parts else None
+
+
 def _cantick_usb_base():
     """sysfs device dir of a plugged-in CanTick (VID 0x303A + product match),
     or None."""
@@ -136,6 +181,8 @@ class Devices:
             p.add("la")
         if _cantick_usb_base():
             p.add("cantick")            # provisioning affordance (CAN screen)
+        if usb_stick_partition():
+            p.add("usbstick")           # offload media (Files screen)
         self.present = p
         return p
 

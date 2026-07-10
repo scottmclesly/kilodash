@@ -12,6 +12,7 @@ from .canbus import CanScreen
 from .i2cscan import I2cScreen
 from .serialmon import SerialScreen
 from .logic import LogicScreen
+from .files import FilesScreen
 from .kismet import KismetScreen
 from .nodered import NodeRedScreen
 from .aiscatcher import AisCatcherScreen
@@ -30,6 +31,7 @@ SCREENS = [
     I2cScreen,           # device: i2c
     SerialScreen,        # device: serial
     LogicScreen,         # device: la (FX2LP logic analyzer)
+    FilesScreen,         # device: usbstick (log offload + decode tables)
     KismetScreen,        # web app: kismet (tile shows if installed)
     NodeRedScreen,       # web app: node-red (tile shows if installed)
     AisCatcherScreen,    # web app: ais-catcher (needs RTL-SDR + installed)

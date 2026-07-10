@@ -11,6 +11,10 @@ config.json
 captures/*
 !captures/.gitkeep
 
+# Decode tables imported from USB (DBC / NMEA) — per-boat artefacts
+tables/*
+!tables/.gitkeep
+
 # Capture / log artefacts anywhere in the tree
 *.cu8
 *.iq
