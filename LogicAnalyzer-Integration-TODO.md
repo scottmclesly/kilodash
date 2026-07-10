@@ -32,17 +32,20 @@ LAN-Scan refactor and the existing device screens.
 
 ## Phase 0 — Bench bring-up on the Pi (do this first, no repo changes)
 
-- [ ] Install the stack (Kali/Debian package names):
+- [x] Install the stack (Kali/Debian package names):
       `sudo apt install sigrok-cli sigrok-firmware-fx2lafw`
       *(`sigrok-firmware-fx2lafw` is **mandatory** — it's the firmware sigrok
       soft-loads into the bare board. `libsigrokdecode` + the decoder set come
       in as sigrok-cli deps.)*
-- [ ] Plug the board in, then `lsusb` and **write down the VID:PID**.
+- [x] Plug the board in, then `lsusb` and **write down the VID:PID**.
+      **Recorded 2026-07-10: `04b4:8613`** (Cypress default bootloader ID,
+      already first in `devices.py::FX2LA_IDS`).
       *(Expect the Cypress default `04b4:8613` for a blank/default EEPROM. Some
       modules ship with the EEPROM programmed to a clone ID instead — that's why
       we look instead of hardcoding. Record whatever you see; it feeds Phase 1
       and Phase 2.)*
-- [ ] `sigrok-cli --scan`
+- [x] `sigrok-cli --scan`
+      *(Verified 2026-07-10: lists `fx2lafw - Cypress FX2` with D0-D15.)*
       *(This is what triggers the fx2lafw upload. First scan after each plug adds
       a ~1 s delay while the device re-enumerates. Success = it lists an
       `fx2lafw` logic analyzer with channels D0–D7. If it lists nothing: confirm
@@ -66,17 +69,18 @@ LAN-Scan refactor and the existing device screens.
 The screen runs as the kilodash service user (`scott`), not root, so capture
 must work without `sudo`.
 
-- [ ] Install sigrok's shipped udev rules rather than hand-rolling one — they
+- [x] Install sigrok's shipped udev rules rather than hand-rolling one — they
       already enumerate every LA ID **including the FX2 bootloader and all
       fx2lafw variants**, which covers the "ID changes across firmware upload"
       problem for free. Confirm the file exists (commonly
       `/lib/udev/rules.d/60-libsigrok.rules`, installed by the sigrok packages);
       if absent, pull it from the sigrok-util repo.
-- [ ] Ensure `scott` is in the group the rules grant (typically `plugdev`):
+- [x] Ensure `scott` is in the group the rules grant (typically `plugdev`):
       `sudo usermod -aG plugdev scott` (log out/in to take effect).
-- [ ] Reload + replug: `sudo udevadm control --reload && sudo udevadm trigger`,
+- [x] Reload + replug: `sudo udevadm control --reload && sudo udevadm trigger`,
       then unplug/replug the board.
-- [ ] Verify: run the Phase 0 capture **as `scott`, no sudo**. Must succeed.
+- [x] Verify: run the Phase 0 capture **as `scott`, no sudo**.
+      *(Verified 2026-07-10: 4096-sample capture at 1 MHz to .sr as scott.)* Must succeed.
       *(If it only works with sudo, the rule didn't match the actual ID from
       Phase 0 — add that ID explicitly as a fallback rule.)*
 
