@@ -154,21 +154,21 @@ plugged in** (hotplug, see `devices.py`) and carry a small green "live" badge.
 
 | Screen | What it does |
 |---|---|
-| **LAN Scan** | Intent-based network diagnostics (diagnostics only — no offensive tooling). Pick a **target** (IP / hostname / CIDR) and one of four **modes**, then **Run**: <br>• **Discover** — which devices are alive on the subnet. <br>• **Ports** — is an expected port open on a host (curated common ports by default; enter your own in the Ports field). <br>• **Services** — what service + version each open port runs. <br>• **Identify** — best-effort OS guess (needs root; refuses gracefully otherwise). <br>Results stream into a scrolling pane; a badge counts discovered hosts. There is deliberately **no raw-flag entry** — the mode is the safety boundary. |
-| **Wi-Fi** | Enable/disable, scan SSIDs, tap to connect. Secured networks open the on-screen keyboard for the password; saved/open ones connect immediately. |
-| **Pi Health** | Temperature, CPU, memory, disk, uptime, Wi-Fi signal, throttling — each a labelled bar or value card. |
-| **Pomodoro** | Focus/break timer that **keeps counting on a background thread** even when you're on another screen, and toasts each transition app-wide. |
-| **Settings** | Every tunable as a card (booleans toggle, ints step, choices cycle), plus power actions (Restart UI / reboot / shutdown) and a touch-calibration helper. |
+| **LAN Scan** | Intent-based network diagnostics (diagnostics only — no offensive tooling). Pick a **target** (IP / hostname / CIDR) and one of four **modes**, then **Run**: <br>• **Discover** — which devices are alive on the subnet. <br>• **Ports** — is an expected port open on a host (curated common ports by default; enter your own in the Ports field). <br>• **Services** — what service + version each open port runs. <br>• **Identify** — best-effort OS guess (needs root; refuses gracefully otherwise). <br>Results stream into a scrolling pane; a badge counts discovered hosts. There is deliberately **no raw-flag entry** — the mode is the safety boundary. Full user guide: [docs/LANSCAN.md](docs/LANSCAN.md). |
+| **Wi-Fi** | Enable/disable, scan SSIDs, tap to connect. Secured networks open the on-screen keyboard for the password; saved/open ones connect immediately. Full user guide: [docs/WIFI.md](docs/WIFI.md). |
+| **Pi Health** | Temperature, CPU, memory, disk, uptime, Wi-Fi signal, throttling — each a labelled bar or value card. User guide: [docs/SYSTEM.md](docs/SYSTEM.md#pi-health). |
+| **Pomodoro** | Focus/break timer that **keeps counting on a background thread** even when you're on another screen, and toasts each transition app-wide. User guide: [docs/SYSTEM.md](docs/SYSTEM.md#pomodoro). |
+| **Settings** | Every tunable as a card (booleans toggle, ints step, choices cycle), plus power actions (Restart UI / reboot / shutdown) and a touch-calibration helper. User guide: [docs/SYSTEM.md](docs/SYSTEM.md#settings). |
 
 **Hotplug device screens (tile shows only while the device is present):**
 
 | Screen | Device | What it does |
 |---|---|---|
-| **RTL-SDR** | RTL2832U dongle | Frequency **Scan** (`rtl_power` sweep → spectrum + peak), **Identify** (`rtl_433` decodes real ISM packets and names the device), per-band knowledge hints, and IQ **Capture** (RX-only, no replay). |
-| **WiFi Sniff** | ALFA (2nd adapter) | Passive monitor-mode capture with `airodump-ng` — every AP/client it hears (SSID, channel, encryption, signal). A watchdog keeps the Pi's own uplink (`wlan0`) connected the whole time. Passive only, no injection. |
-| **CAN Bus** | CANable / gs_usb / slcan / **CanTick (WiFi)** | Bring the interface up at a chosen bitrate, best-effort bitrate **autodetect**, a **live RX-frame counter + frames/s** readout, and logging to a timestamped `candump` file. Also hosts the **CanTick** WiFi bridge — see below. |
-| **I2C Scan** | onboard i2c-1 | `i2cdetect` on the Pi's bus with best-guess names for responding addresses. |
-| **Serial** | FTDI / CP210x / CH340 | Lists USB-serial ports and gives a read-only live view of one at a chosen baud — handy for sniffing UART/debug output. |
+| **RTL-SDR** | RTL2832U dongle | Frequency **Scan** (`rtl_power` sweep → spectrum + peak), **Identify** (`rtl_433` decodes real ISM packets and names the device), per-band knowledge hints, and IQ **Capture** (RX-only, no replay). Full user guide: [docs/RTLSDR.md](docs/RTLSDR.md). |
+| **WiFi Sniff** | ALFA (2nd adapter) | Passive monitor-mode capture with `airodump-ng` — every AP/client it hears (SSID, channel, encryption, signal). A watchdog keeps the Pi's own uplink (`wlan0`) connected the whole time. Passive only, no injection. Full user guide: [docs/WIFISNIFF.md](docs/WIFISNIFF.md). |
+| **CAN Bus** | CANable / gs_usb / slcan / **CanTick (WiFi)** | Bring the interface up at a chosen bitrate, best-effort bitrate **autodetect**, a **live RX-frame counter + frames/s** readout, and logging to a timestamped `candump` file. Also hosts the **CanTick** WiFi bridge — see below. Full user guide: [docs/CANBUS.md](docs/CANBUS.md). |
+| **I2C Scan** | onboard i2c-1 | `i2cdetect` on the Pi's bus with best-guess names for responding addresses. User guide: [docs/I2C-SERIAL.md](docs/I2C-SERIAL.md#i2c-scan). |
+| **Serial** | FTDI / CP210x / CH340 | Lists USB-serial ports and gives a read-only live view of one at a chosen baud — handy for sniffing UART/debug output. User guide: [docs/I2C-SERIAL.md](docs/I2C-SERIAL.md#serial). |
 | **Logic** | FX2LP (CY7C68013A) | Passive multi-channel digital capture + protocol decode (UART/I2C/SPI/CAN) via the packaged `sigrok-cli`/fx2lafw stack: 8 channels, up to 24 MHz, edge trigger, decoded annotations + per-channel activity strips. Every capture persists to `/opt/kilodash/captures/*.sr` for PulseView on a laptop. Install with [`setup/install-logic-analyzer.sh`](setup/install-logic-analyzer.sh); full user guide: [docs/LOGICANALISER.md](docs/LOGICANALISER.md). **3.3 V logic only** — the bare board has no input protection; series resistor / buffer / divider before probing anything near Scottina's 12 V wiring. |
 | **Files** | USB stick | **Offload logs without a laptop:** plug in any USB stick and copy captures (`candump` logs, `.sr`, IQ, sniffs) from `/opt/kilodash/captures/` onto it — one per tap or all at once — with a sync-then-**Eject** button so it's always safe to pull. Also exchanges **CAN decode tables** (DBC, NMEA2000/canboat) between the stick and `/opt/kilodash/tables/`, where decoding tools read them. Copies never delete the originals. Full user guide: [docs/FILES.md](docs/FILES.md). |
 
@@ -249,6 +249,8 @@ its port actually answers (a real "✓ web UI confirmed", not just "spawned"),
 and shows the **URL:port** to open the full interface from a phone or laptop —
 plus a compact native panel of controls and live feedback. If the app was
 already serving (autostarted at boot), it's adopted instead of duplicated.
+
+Full user guide for all four: [docs/WEBAPPS.md](docs/WEBAPPS.md).
 
 Shipped apps (tiles appear only when the app is installed):
 
