@@ -86,6 +86,34 @@ def _can(d, cx, cy, r, c):
         _dot(d, x, y, r * 0.16, c)
 
 
+def _n2k(d, cx, cy, r, c):
+    """Decoded gauge over the bus pair: raw wire below, meaning above."""
+    lw = _lw(r)
+    gy = cy + r * 0.65
+    d.line((cx - r, gy, cx + r, gy), fill=c, width=lw)
+    d.line((cx - r, gy + r * 0.3, cx + r, gy + r * 0.3), fill=c, width=lw)
+    gr = r * 0.85
+    d.arc((cx - gr, cy - r * 0.9, cx + gr, cy - r * 0.9 + 2 * gr),
+          180, 360, fill=c, width=lw)
+    nx, ny = _pt(cx, cy - r * 0.9 + gr, gr * 0.75, 235)
+    d.line((cx, cy - r * 0.9 + gr, nx, ny), fill=c, width=lw)
+    _dot(d, cx, cy - r * 0.9 + gr, r * 0.14, c)
+
+
+def _tables(d, cx, cy, r, c):
+    """Decode table: header band + cell grid."""
+    lw = _lw(r)
+    x0, y0 = cx - r * 0.95, cy - r * 0.8
+    x1, y1 = cx + r * 0.95, cy + r * 0.8
+    hh = (y1 - y0) * 0.3
+    d.rectangle((x0, y0, x1, y0 + hh), fill=c)
+    d.rectangle((x0, y0, x1, y1), outline=c, width=lw)
+    for f in (1, 2):
+        y = y0 + hh + (y1 - y0 - hh) * f / 3
+        d.line((x0, y, x1, y), fill=c, width=lw)
+    d.line((cx - r * 0.25, y0 + hh, cx - r * 0.25, y1), fill=c, width=lw)
+
+
 def _i2c(d, cx, cy, r, c):
     """Address matrix with one responding device."""
     step = r * 0.62
@@ -205,6 +233,8 @@ _GLYPHS = {
     "sdr": _sdr,
     "wifisniff": _wifisniff,
     "can": _can,
+    "n2k": _n2k,
+    "tables": _tables,
     "i2c": _i2c,
     "serial": _serial,
     "logic": _logic,

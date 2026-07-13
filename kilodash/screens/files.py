@@ -143,17 +143,28 @@ def _import_tables():
 
 
 def _export_tables():
-    """Background worker: push /opt/kilodash/tables onto the stick."""
+    """Background worker: push /opt/kilodash/tables onto the stick — the
+    flat SD-export shape of TABLES.md §5, so one conversion effort feeds
+    Wio Terminal Island too: loose root files AND the converter-installed
+    pgn/ store (tables + manifests), all into one flat dir."""
     dest = os.path.join(MOUNT, DEST_SUB, "tables")
     os.makedirs(dest, exist_ok=True)
     n = 0
-    for name in sorted(os.listdir(TABLE_DIR)) if os.path.isdir(TABLE_DIR) \
-            else []:
-        src = os.path.join(TABLE_DIR, name)
-        if name.startswith(".") or not os.path.isfile(src):
+    for src_dir in (TABLE_DIR, os.path.join(TABLE_DIR, "pgn"),
+                    os.path.join(TABLE_DIR, "dbc")):
+        try:
+            names = sorted(os.listdir(src_dir))
+        except OSError:
             continue
-        shutil.copy2(src, os.path.join(dest, name))
-        n += 1
+        for name in names:
+            src = os.path.join(src_dir, name)
+            # decode-table data only — tables/ also hosts the contract
+            # code (validate.py, store.py), which never leaves the box
+            if (name.startswith(".") or not os.path.isfile(src)
+                    or not name.lower().endswith(TABLE_EXTS)):
+                continue
+            shutil.copy2(src, os.path.join(dest, name))
+            n += 1
     _sh("sync", timeout=60)
     return n, (f"Exported {n} table{'s' if n != 1 else ''} → USB" if n
                else "tables/ is empty — import first")

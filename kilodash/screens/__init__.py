@@ -9,6 +9,8 @@ from .wifi import WifiScreen
 from .sdr import SdrScreen
 from .wifisniff import WifiSniffScreen
 from .canbus import CanScreen
+from .n2k import N2kScreen
+from .tables import TablesScreen
 from .i2cscan import I2cScreen
 from .serialmon import SerialScreen
 from .logic import LogicScreen
@@ -27,11 +29,13 @@ SCREENS = [
     WifiScreen,
     SdrScreen,           # device: sdr
     WifiSniffScreen,     # device: wifisniff (ALFA)
-    CanScreen,           # device: can
+    CanScreen,           # device: can (raw-bus forensics)
+    N2kScreen,           # device: can (semantic decode from PGN tables)
     I2cScreen,           # device: i2c
     SerialScreen,        # device: serial
     LogicScreen,         # device: la (FX2LP logic analyzer)
     FilesScreen,         # device: usbstick (log offload + decode tables)
+    TablesScreen,        # always visible: converter service + store mirror
     KismetScreen,        # web app: kismet (tile shows if installed)
     NodeRedScreen,       # web app: node-red (tile shows if installed)
     AisCatcherScreen,    # web app: ais-catcher (needs RTL-SDR + installed)

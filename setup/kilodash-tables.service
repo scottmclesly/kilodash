@@ -1,0 +1,19 @@
+[Unit]
+Description=Scottina tables converter (decode-table web app, TABLES.md)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/kilodash
+ExecStart=/usr/bin/python3 -m kilodash.tableconv
+# On-demand lifecycle: the Tables tile starts this unit; the app exits
+# ITSELF after its idle timeout (default 15 min without HTTP activity or an
+# in-flight conversion). A clean idle exit must stay "stopped", not respawn.
+Restart=no
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

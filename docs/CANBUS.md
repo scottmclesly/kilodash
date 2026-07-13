@@ -1,60 +1,103 @@
-# CAN Bus — user guide
+# CAN — user guide
 
-Scottina's **CAN Bus** screen brings a CAN interface up, shows a **live RX-frame
-counter**, and logs traffic to a timestamped file — for a USB dongle wired to
-the bus, or a **CanTick** ESP32 box that tunnels a remote bus over Wi-Fi. It
-also hosts one-time **provisioning** for a CanTick and a **heartbeat health
-card** for the WiFi link.
+Scottina's **CAN** screen is **raw-bus forensics** for proprietary traffic:
+unknown IDs, unknown semantics, you reverse-engineering. It watches the bus
+through its own SocketCAN socket (a USB dongle wired to the bus, or a
+**CanTick** ESP32 box tunnelling a remote bus over Wi-Fi), aggregates what it
+hears per arbitration ID, alerts on the byte positions you're watching, and
+exports replayable logs. Traffic with *known* semantics belongs on the
+sibling [NMEA2K screen](NMEA2K.md), which decodes against PGN tables.
 
-The **CAN Bus tile appears on Home while a CAN dongle is present** (CANable /
+The **CAN tile appears on Home while a CAN dongle is present** (CANable /
 `gs_usb` / `slcan`) — and, once the CanTick WiFi link is enabled, while a
-CanTick is dialled in. Needs `can-utils` (`candump`) and `iproute2`.
+CanTick is dialled in. Needs `iproute2` (+ `can-utils` for continuous
+logging).
+
+**Scope: diagnostics only — this screen has no TX surface at all.** Its
+socket only ever receives; the single system-wide TX exception (heartbeat /
+reply behavior required by bus participation, e.g. NMEA2000 address claim)
+lives in the link layer, never in any control here, and the test suite
+AST-scans the screen every run to keep it that way.
 
 ---
 
 ## The screen
 
-Tap the **CAN Bus** tile. Top to bottom:
+Tap the **CAN** tile. The interface card (with the **CanTick chip** — tap to
+toggle the WiFi link; grey off, amber listening, green up) sits above two
+tabs:
+
+### Bus tab (the working view)
+
+| Element | What it does |
+|---|---|
+| **IDs / Live chip** | Toggle the seen-IDs table vs. a candump-style live list (newest first). |
+| **W chip** | Filter to IDs that have watches. |
+| **Δ chip** | Filter to frames/IDs whose bytes changed. |
+| **ID chip** | Shows when an exact-ID filter is set (from the byte grid); tap to clear. |
+| **⚠ badge** | Total watch hits; lights up while a watch is firing. Alerts are always a badge + row flash — never a modal over a live bus view. |
+| **Seen-IDs table** | One row per arbitration ID: id, frame count, rate, last payload with **changed bytes highlighted** since the previous frame, watched positions underlined. Alerting rows flash their border. Tap a row → the byte grid. |
+| **Save ring** | Exports the ring buffer (bounded, 50 000 frames) through the current filters to a candump `.log`. |
+
+**The byte grid** (tap a row): eight cells show the last payload byte per
+position, watch markers (`Δ` change / `=XX` match), and hit counts. Tap a
+byte, then:
+
+- **Alert: change** — fire whenever the byte at (ID, position) *differs*
+  from its last-seen value (the primary RE tool: "which byte moves when I
+  press the button?").
+- **Alert: value…** — fire when the byte *becomes* a hex value you enter.
+- **Remove watch** — with its hit count.
+- **Filter this ID** — pin the whole Bus tab (and ring exports) to this ID.
+
+### Setup tab
 
 | Control | What it does |
 |---|---|
-| **Interface card** | The selected CAN interface (`can0` / `slcan0`), green when found. |
-| **CanTick chip** | Tap to toggle the WiFi-CAN link on/off. Dot colour = link state (grey off, amber listening/backing-off, green up). |
 | **‹ bitrate ›** | Pick the bus bitrate: 1M / 500k / 250k / 125k / 100k / 50k (default 500k). |
 | **Autodetect** | Listens (listen-only) at each common bitrate and keeps the one that yields frames. |
 | **Provision** | Appears when a CanTick is on USB — pushes Wi-Fi creds + bus settings to it (see below). |
-| **Start / Stop logging** | Brings the interface up and records to a `candump` log; Stop closes it. |
-| **Status line** | What's happening right now. |
-| **RX FRAMES card** | Live kernel RX counter + frames/s. Green dot = frames seen in the last second; "idle" when the bus is quiet. |
+| **Start / Stop logging** | Brings the interface up and records continuously to a `candump` log; Stop closes it. |
+| **RX FRAMES card** | Live kernel RX counter + frames/s. Green dot = frames seen in the last second. |
 | **CanTick health card** | Present when the WiFi link is enabled — see [CanTick](#cantick--can-over-wifi). |
 
-The RX counter is the responsive part: it ticks at ~20 Hz while frames flow and
-automatically drops back to a slow refresh on a silent bus, so a wedged or
-unpowered bus never spins the CPU.
+The screen ticks fast (~10 Hz, repainting only the changed rows) while frames
+flow and automatically drops back to a slow refresh on a silent bus, so a
+wedged or unpowered bus never spins the CPU.
 
 ## Every log is saved
 
-**Start logging** writes a standard `candump` log to:
+Both capture paths write standard candump `.log` format — replayable with
+`canplayer`, loadable in SavvyCAN / Wireshark:
 
 ```
-/opt/kilodash/captures/can_YYYYmmdd-HHMMSS.log
+/opt/kilodash/captures/can_YYYYmmdd-HHMMSS.log       # Setup → Start logging (continuous)
+/opt/kilodash/captures/canring_YYYYmmdd-HHMMSS.log   # Bus → Save ring (last 50k frames, filtered)
 ```
 
-Offload it with the [Files](FILES.md) screen or over SSH and open it in
-SavvyCAN / Wireshark / `canplayer` on a laptop. Decoding to signals uses the
-DBC/NMEA2000 tables in `/opt/kilodash/tables/` — carry those on a USB stick
-with [Files](FILES.md#decode-tables-what-gets-imported).
+Offload them with the [Files](FILES.md) screen or over SSH. Decoding to
+signals uses the NMEA2000/DBC tables in `/opt/kilodash/tables/`
+([TABLES.md](../TABLES.md)) — live on the [NMEA2K screen](NMEA2K.md), or
+carry tables on a USB stick with
+[Files](FILES.md#decode-tables-what-gets-imported).
 
 ## Typical sessions
 
+**"Which byte is the headlight switch?"**
+Open **CAN**, watch the seen-IDs table settle, flip the switch and look for
+the **Δ highlight**. Tap the suspect row, tap the moving byte, **Alert:
+change** — now every flip flashes the row and bumps the hit counter. Pin it
+with **Filter this ID**, then **Save ring** for the laptop.
+
 **Sniff a wired bus:**
-Plug in a CANable, open **CAN Bus**. If you know the rate, pick it with the
-bitrate arrows; otherwise tap **Autodetect**. Tap **Start logging** — the RX
-counter climbs and frames/s shows the load. **Stop logging** to close the file.
+Plug in a CANable, open **CAN**. If you know the rate, pick it on **Setup**;
+otherwise tap **Autodetect**. **Start logging** for a continuous file, or
+just work the Bus tab and **Save ring** when something interesting happened
+— the ring was already recording.
 
 **"Is this bus even alive / what speed?"**
-Tap **Autodetect**. It reports the detected rate, or "No frames — bus idle or
-unpowered" if it heard nothing at any rate.
+Setup → **Autodetect**. It reports the detected rate, or "No frames — bus
+idle or unpowered" if it heard nothing at any rate.
 
 ## CanTick — CAN over WiFi
 
@@ -121,8 +164,15 @@ diagnostics + normal CAN participation only.
 
 ## Limits (by design)
 
+- **No TX surface.** No injection, replay, fuzzing, or arbitrary-frame TX is
+  expressible anywhere in the UI — the screen's socket is receive-only and
+  `tests/test_busmon.py` enforces it in code (allow-list + reject pass over
+  the screen's AST). The heartbeat/reply exception lives in the link layer
+  only.
 - **Listen-only for CanTick is enforced on the device**, not just the UI.
 - The bitrate for a `slcan`/CanTick link is fixed at attach time by `slcand`;
   the bitrate arrows apply to native `can*` interfaces.
+- Watches and the ring buffer are session state — they survive tile-hopping
+  but not a UI restart. Anything worth keeping: **Save ring**.
 - Scope is diagnostics and normal CAN participation — see
   [`To-DoLists/PROTOCOL.md`](../To-DoLists/PROTOCOL.md).

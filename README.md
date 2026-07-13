@@ -166,10 +166,12 @@ plugged in** (hotplug, see `devices.py`) and carry a small green "live" badge.
 |---|---|---|
 | **RTL-SDR** | RTL2832U dongle | Frequency **Scan** (`rtl_power` sweep → spectrum + peak), **Identify** (`rtl_433` decodes real ISM packets and names the device), per-band knowledge hints, and IQ **Capture** (RX-only, no replay). Full user guide: [docs/RTLSDR.md](docs/RTLSDR.md). |
 | **WiFi Sniff** | ALFA (2nd adapter) | Passive monitor-mode capture with `airodump-ng` — every AP/client it hears (SSID, channel, encryption, signal). A watchdog keeps the Pi's own uplink (`wlan0`) connected the whole time. Passive only, no injection. Full user guide: [docs/WIFISNIFF.md](docs/WIFISNIFF.md). |
-| **CAN Bus** | CANable / gs_usb / slcan / **CanTick (WiFi)** | Bring the interface up at a chosen bitrate, best-effort bitrate **autodetect**, a **live RX-frame counter + frames/s** readout, and logging to a timestamped `candump` file. Also hosts the **CanTick** WiFi bridge — see below. Full user guide: [docs/CANBUS.md](docs/CANBUS.md). |
+| **CAN** | CanTick/slcan0 (or CANable / gs_usb) | **Raw sniff, byte-watch alerts, candump logs.** Raw-bus forensics for proprietary traffic: a **seen-IDs table** (count, rate, last payload, changed-bytes highlight), tap a row → **byte grid** → per-byte watches (change-detection or value-match; badge + row flash, never modal), a bounded ring log with filters exported as replayable candump `.log` (SavvyCAN-loadable), plus the Setup tab: bitrate select/**autodetect**, continuous logging, and the **CanTick** WiFi bridge — see below. Full user guide: [docs/CANBUS.md](docs/CANBUS.md). |
+| **NMEA2K** | CanTick/slcan0 + PGN tables | **Live decode, range/appearance alerts.** Semantic decode of known PGNs against tables from the Tables converter ([TABLES.md](TABLES.md)): fast-packet reassembly → PGN lookup → per-field values with units; alerts when a field **exits a range** or a configured PGN **appears at all**; unknown PGNs are counted, listed, and hand over to the CAN screen in one tap. Decoded log exports as JSON lines. Guide: [docs/NMEA2K.md](docs/NMEA2K.md). |
 | **I2C Scan** | onboard i2c-1 | `i2cdetect` on the Pi's bus with best-guess names for responding addresses. User guide: [docs/I2C-SERIAL.md](docs/I2C-SERIAL.md#i2c-scan). |
 | **Serial** | FTDI / CP210x / CH340 | Lists USB-serial ports and gives a read-only live view of one at a chosen baud — handy for sniffing UART/debug output. User guide: [docs/I2C-SERIAL.md](docs/I2C-SERIAL.md#serial). |
 | **Logic** | FX2LP (CY7C68013A) | Passive multi-channel digital capture + protocol decode (UART/I2C/SPI/CAN) via the packaged `sigrok-cli`/fx2lafw stack: 8 channels, up to 24 MHz, edge trigger, decoded annotations + per-channel activity strips. Every capture persists to `/opt/kilodash/captures/*.sr` for PulseView on a laptop. Install with [`setup/install-logic-analyzer.sh`](setup/install-logic-analyzer.sh); full user guide: [docs/LOGICANALISER.md](docs/LOGICANALISER.md). **3.3 V logic only** — the bare board has no input protection; series resistor / buffer / divider before probing anything near Scottina's 12 V wiring. |
+| **Tables** | — | **Table converter service + inventory.** Always-visible remote control for the on-device converter web app (start/stop, URL **+ QR code** at the eth0-preferred address) and a mirror of the installed PGN tables (enable/disable = atomic manifest flip, remove). Conversion itself happens in a browser on a big screen: upload a vendor PDF → side-by-side review → human approval → validation → store. Contract: [TABLES.md](TABLES.md); guide: [docs/NMEA2K.md](docs/NMEA2K.md). Install with [`setup/install-tables.sh`](setup/install-tables.sh). |
 | **Files** | USB stick | **Offload logs without a laptop:** plug in any USB stick and copy captures (`candump` logs, `.sr`, IQ, sniffs) from `/opt/kilodash/captures/` onto it — one per tap or all at once — with a sync-then-**Eject** button so it's always safe to pull. Also exchanges **CAN decode tables** (DBC, NMEA2000/canboat) between the stick and `/opt/kilodash/tables/`, where decoding tools read them. Copies never delete the originals. Full user guide: [docs/FILES.md](docs/FILES.md). |
 
 **Web-app launch terminals** (see below): **Kismet**, **Node-RED**, **AIS**,
@@ -325,6 +327,21 @@ this a diagnostics tool:
 Tests in `tests/` prove each mode's exact arg array and that every flag above is
 refused (`python -m unittest discover -s tests`). Full task list:
 [LAN-Scan-Refactor-TODO.md](LAN-Scan-Refactor-TODO.md).
+
+### CAN scope (the one TX exception, stated explicitly)
+
+The CAN and NMEA2K screens are **diagnostics only. One exception, stated
+explicitly: CAN has normal TX/RX *solely* for correct heartbeat/reply
+behavior required by bus participation (e.g. NMEA2000 address claim / ISO
+request responses). No injection, replay, fuzzing, or arbitrary-frame TX is
+expressible anywhere in the UI or command builders.** That exception lives
+in the **link layer only** (the CanTick firmware / N2K stack — see
+[PROTOCOL.md](To-DoLists/PROTOCOL.md)), never in any user-facing control:
+both screens' SocketCAN sockets are recv-only, and — same discipline as the
+LAN Scan flags — this is enforced in code, not by convention:
+`tests/test_busmon.py` / `tests/test_n2k.py` AST-scan the screens and their
+bus models every test run (positive allow-list + independent reject pass
+over send-shaped calls and TX-capable can-utils invocations).
 
 ## Roadmap
 

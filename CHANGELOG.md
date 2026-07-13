@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **CAN / NMEA2K split + Tables converter** (contract in `TABLES.md`):
+  - **CAN screen refactor** — raw-bus forensics for reverse-engineering:
+    seen-IDs table (count/rate/last payload/changed-bytes highlight since
+    the previous frame), tap-a-row **byte grid** with per-byte watches in
+    two modes (change-detection and value-match; non-modal badge + row
+    flash), candump-style live list, bounded 50k-frame ring log with
+    ID/watched/changed filters exported as replayable candump `.log`.
+    RX-only enforced in code: `tests/test_busmon.py` AST-scans the screen
+    and its model (`kilodash/busmon.py`) for TX-shaped calls every run.
+    Existing controls (bitrate/autodetect/logging/CanTick hosting) live on
+    the Setup tab unchanged.
+  - **NMEA2K screen** (`kilodash/screens/n2k.py`, decode core
+    `kilodash/n2k.py`) — table-driven semantic decode: fast-packet
+    reassembly → PGN lookup → field extraction; per-(PGN, source) rows with
+    tap-through field breakdown; **range-exit** (transition-fired) and
+    **appearance** alerts; unknown PGNs counted + one-tap handover to the
+    CAN screen; bounded decoded log exported as JSON lines.
+  - **Table store contract** (`TABLES.md`, `tables/validate.py`,
+    `tables/store.py`) — Canboat-JSON subset, per-table manifest sidecar
+    (sha256, enabled flag, pgn_count), consumers-read/converter-writes
+    discipline, shared validator run on ingest *and* on load, flat
+    SD-export shape feeding Wio Terminal Island.
+  - **Tables converter web app** (`kilodash/tableconv.py`, Flask, port
+    8735) — PDF → side-by-side human review → validate → atomic install;
+    Installed tab (enable/disable/remove/download/manifest + inbox
+    ingest); DBC tab stubbed. On-demand systemd unit
+    (`kilodash-tables.service`) with a 15-min idle self-shutdown that
+    counts in-flight conversions as activity; uploads size-capped +
+    magic-checked, PDF parsing crash-isolated in a subprocess
+    (`kilodash/pdfextract.py`).
+  - **Tables tile** (`kilodash/screens/tables.py`) — thin remote control +
+    mirror: service status with idle countdown, URL **+ QR code** at the
+    advertised address, manifest-only inventory (tap = atomic enabled
+    flip, ✕ = remove). `kilodash/net.py::advertise_addr()` (eth0-preferred)
+    is the shared address helper the CanTick work reuses.
+  - Files screen **Tables → USB** now exports the installed `pgn/` store
+    (tables + manifests) flat — the Wio Terminal Island SD shape.
+  - Installer `setup/install-tables.sh`; user guide `docs/NMEA2K.md`.
+
 - **CanTick WiFi-CAN bridge** (`kilodash/cantick.py`, contract in
   `PROTOCOL.md`): a CanTick dialing in over WiFi appears as an ordinary
   `slcan0` — supervised `socat`+`slcand` pair on TCP 29536 with automatic

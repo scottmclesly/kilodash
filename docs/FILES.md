@@ -67,8 +67,14 @@ for these extensions and copies matches into `/opt/kilodash/tables/`
 | `.n2k`, `.json`, `.xml` | NMEA2000 / canboat PGN definitions |
 
 So the workflow for a new boat/vehicle is: put `engine.dbc` (or a canboat
-`pgns.json`) in the root of any stick, plug it in, **Tables ← USB**, done —
-the decoding tools pick the tables up from `/opt/kilodash/tables/`.
+`pgns.json`) in the root of any stick, plug it in, **Tables ← USB**, done.
+
+One nuance since the CAN/NMEA2K split ([TABLES.md](../TABLES.md)): imported
+files land in the `tables/` **inbox**, where they are inert. To feed the
+[NMEA2K screen](NMEA2K.md)'s live decode they must pass validation once —
+open the **Tables** tile → converter → *Installed* tab → **Validate &
+ingest**. **Tables → USB** exports both the inbox and the installed store
+(tables + manifests, flat) — the SD shape Wio Terminal Island reads.
 
 ## Notes & guardrails
 
