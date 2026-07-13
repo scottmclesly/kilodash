@@ -36,6 +36,14 @@ FX2LA_IDS = {(0x04b4, 0x8613),                      # Cypress FX2 bootloader
 # that string counts as a CanTick too. A string-less descriptor also counts.
 CANTICK_VID = 0x303a
 _CANTICK_PRODUCTS = ("cantick", "usb jtag/serial")
+# Scottina Light (Wio Terminal, Light Dock — DOCK-PROTOCOL.md). Phase 0
+# bench fact (2026-07-12, this unit): enumerates as 2886:802d with the STOCK
+# descriptor string "Seeed Wio Terminal" — the v1-foundation firmware does
+# not rename the CDC product. Seeed's VID + product-string match, never the
+# ttyACM index (CanTick is also CDC on this bench); accept a future firmware
+# that does rename itself.
+LIGHT_VID = 0x2886
+_LIGHT_PRODUCTS = ("wio terminal", "scottina light")
 
 
 def _usb_ids():
@@ -122,7 +130,37 @@ def _cantick_usb_base():
 
 def cantick_tty():
     """/dev path of the CanTick's CDC serial port, or None."""
-    base = _cantick_usb_base()
+    return _cdc_tty(_cantick_usb_base())
+
+
+def _light_usb_base():
+    """sysfs device dir of a docked Scottina Light (Seeed VID + product
+    string — a string-less Seeed device is NOT assumed to be a Light), or
+    None."""
+    for vp in glob.glob("/sys/bus/usb/devices/*/idVendor"):
+        try:
+            if int(open(vp).read().strip(), 16) != LIGHT_VID:
+                continue
+        except (OSError, ValueError):
+            continue
+        base = os.path.dirname(vp)
+        try:
+            product = open(os.path.join(base, "product")).read().strip()
+        except OSError:
+            continue
+        if any(p in product.lower() for p in _LIGHT_PRODUCTS):
+            return base
+    return None
+
+
+def light_tty():
+    """/dev path of Scottina Light's CDC serial port, or None."""
+    return _cdc_tty(_light_usb_base())
+
+
+def _cdc_tty(base):
+    """tty node under a sysfs USB device dir (VID/product matched first —
+    never keyed on the ACM index)."""
     if not base:
         return None
     for pat in ("/*/tty/ttyACM*", "/*/ttyACM*"):
@@ -181,6 +219,8 @@ class Devices:
             p.add("la")
         if _cantick_usb_base():
             p.add("cantick")            # provisioning affordance (CAN screen)
+        if _light_usb_base():
+            p.add("scottinalight")      # Light Dock screen (auto-sync)
         if usb_stick_partition():
             p.add("usbstick")           # offload media (Files screen)
         self.present = p
