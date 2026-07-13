@@ -129,6 +129,21 @@ class TestClientOverPTY(PTYTestCase):
         with self.assertRaises(DockTimeout):
             client.request("HELLO", timeout=0.2)
 
+    def test_list_pagination_walks_all_pages(self):
+        fake, path = self.make_fake()
+        # 60 rolling logs at 24 B/entry: two full pages plus a remainder
+        for i in range(60):
+            fake.files["/logs/pag%03d.log" % i] = b"x" * (i + 1)
+        client = DockClient(path)
+        self.addCleanup(client.close)
+        client.hello()
+        r = client.list_dir("/logs/", False)
+        self.assertEqual(r["count"], 62)         # 60 + the 2 fixture logs
+        names = [e["name"] for e in r["entries"]]
+        self.assertEqual(len(set(names)), 62)    # no dupes, no skips
+        self.assertIn("pag059.log", names)
+        self.assertIn("raw001.log", names)
+
     def test_chunked_put_commit_roundtrip(self):
         fake, path = self.make_fake()
         client = DockClient(path)

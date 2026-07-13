@@ -2,7 +2,7 @@
   "$comment": "Conformance vectors for DOCK-PROTOCOL.md. Generated, not hand-edited: every CRC and sha256 is computed. Mirrored verbatim in scottmclesly/Scottina-Light and kilodash, next to DOCK-PROTOCOL.md, per its \u00a710.",
   "protocol": "DOCK-PROTOCOL.md",
   "protocol_version": 1,
-  "vectors_version": "0.1.0",
+  "vectors_version": "0.2",
   "framing": {
     "sof": "0xa5",
     "layout": "SOF u8 | TYPE u8 | SEQ u8 | LEN u16le | PAYLOAD | CRC16le over TYPE..PAYLOAD",
@@ -183,16 +183,18 @@
         "seq": 4,
         "payload": {
           "dir": "/logs/",
-          "want_hashes": 0
+          "want_hashes": 0,
+          "start_index": 0
         }
       },
-      "wire_in": "a503040800062f6c6f67732f001f49",
+      "wire_in": "a503040a00062f6c6f67732f0000006052",
       "expect": [
         {
           "frame": {
             "type": "LIST",
             "seq": 4,
             "payload": {
+              "start_index": 0,
               "count": 2,
               "entries": [
                 {
@@ -207,10 +209,11 @@
                   "mtime": 0,
                   "sha256_present": 0
                 }
-              ]
+              ],
+              "more": 0
             }
           },
-          "wire_out": "a50304320002000a7261773030302e6c6f67600000000000000000000000000a7261773030312e6c6f6710000000000000000000000000983a"
+          "wire_out": "a503043500000002000a7261773030302e6c6f67600000000000000000000000000a7261773030312e6c6f6710000000000000000000000000000dc8"
         }
       ],
       "notes": "Log economics: no hashes requested, none returned. The fake Light lists lexicographically; firmware entry order is unspecified \u2014 conformance for LIST is set-equality on entries, not order. The active log file is never in this listing (\u00a76)."
@@ -224,16 +227,18 @@
         "seq": 5,
         "payload": {
           "dir": "/tables/",
-          "want_hashes": 1
+          "want_hashes": 1,
+          "start_index": 0
         }
       },
-      "wire_in": "a503050a00082f7461626c65732f01259c",
+      "wire_in": "a503050c00082f7461626c65732f0100002622",
       "expect": [
         {
           "frame": {
             "type": "LIST",
             "seq": 5,
             "payload": {
+              "start_index": 0,
               "count": 1,
               "entries": [
                 {
@@ -243,10 +248,11 @@
                   "sha256_present": 1,
                   "sha256": "7aac5a0b0e0c4d2732ce21fd6100f5205bcf21339df79f00fbd695855f71d41a"
                 }
-              ]
+              ],
+              "more": 0
             }
           },
-          "wire_out": "a5030541000100116e6d6561323030302d7374642e6a736f6e240000000000000000000000017aac5a0b0e0c4d2732ce21fd6100f5205bcf21339df79f00fbd695855f71d41a8ba7"
+          "wire_out": "a50305440000000100116e6d6561323030302d7374642e6a736f6e240000000000000000000000017aac5a0b0e0c4d2732ce21fd6100f5205bcf21339df79f00fbd695855f71d41a00c899"
         }
       ],
       "notes": "Table economics: hashes requested and served; Prime diffs by name+sha256."
@@ -726,10 +732,11 @@
         "seq": 21,
         "payload": {
           "dir": "/logs/",
-          "want_hashes": 0
+          "want_hashes": 0,
+          "start_index": 0
         }
       },
-      "wire_in": "a503150800062f6c6f67732f006bc4",
+      "wire_in": "a503150a00062f6c6f67732f000000b701",
       "expect": [
         {
           "frame": {
@@ -918,10 +925,11 @@
         "seq": 27,
         "payload": {
           "dir": "/logs/",
-          "want_hashes": 0
+          "want_hashes": 0,
+          "start_index": 0
         }
       },
-      "wire_in": "a5031b0800062f6c6f67732f001197",
+      "wire_in": "a5031b0a00062f6c6f67732f0000008685",
       "expect": [
         {
           "frame": {
@@ -1038,10 +1046,11 @@
         "seq": 31,
         "payload": {
           "dir": "/config/",
-          "want_hashes": 0
+          "want_hashes": 0,
+          "start_index": 0
         }
       },
-      "wire_in": "a5031f0a00082f636f6e6669672f00d44e",
+      "wire_in": "a5031f0c00082f636f6e6669672f0000005dae",
       "expect": [
         {
           "frame": {
@@ -1460,6 +1469,832 @@
         }
       ],
       "notes": "Strictly sequential per \u00a71 \u2014 Prime never actually pipelines, but bytes can land back-to-back in one read. Each response echoes its request's SEQ, in order."
+    },
+    {
+      "id": "list-logs-paginated",
+      "section": "\u00a74.LIST",
+      "kind": "exchange",
+      "light_state": {
+        "files": {
+          "/logs/raw000.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "9578018d030613c69de7c33290f2236952ceff2b2dfc3bb10c9d51e26609e094"
+          },
+          "/logs/raw001.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "4f1faebb555351929074bd5f6acf5369e39111e74453a06eed5c6309c5e14f5a"
+          },
+          "/logs/raw002.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "6ce3b98dc9575d848d4d800eb606ca6d9bcfcd4af635181c5fe061b464fdec22"
+          },
+          "/logs/raw003.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "406bd3fd4f26464043c51734ecf9e7b51b5e9df378f43bb786ea4e409fbb615b"
+          },
+          "/logs/raw004.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "a605eb8b7d185be8e630b3d3bb2f4eff11fc05772442b9ce8fe8e81c18465ae0"
+          },
+          "/logs/raw005.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "a9afce9f46270b452c6d3c9dffb47c4fc92d4b395ef1179175b7907a6d0bfffc"
+          },
+          "/logs/raw006.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "3620c814b1df065cf1767cc76714a486f44ffbb2a6fce6dc9c07e4d83bd87b8e"
+          },
+          "/logs/raw007.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "0d71e3dc64002d3a50ca71a910c7ca47e9836b03ce3db165ab2137680f619d2e"
+          },
+          "/logs/raw008.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "65ba234ef98f379ce742c6bcade9f108238063478e9c4ebddccba054a2fce59d"
+          },
+          "/logs/raw009.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "0bb0ac25c72e6ef4e10f48d2a830a49e048d9e4fdaf4e9d6a5c41c5581dd5692"
+          },
+          "/logs/raw010.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "2982be9278ea275527987d30c6059971d15fec7ef4042b6b40cfe4367f01aad2"
+          },
+          "/logs/raw011.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "8d2df43dde993494975decdd0599db1aeb97b0c6bfe78ca2ff6669b28e81bf98"
+          },
+          "/logs/raw012.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "f0a019e0ac3a2c496cbcefc559fbdc7a43ba6f1955c20fa90d23c661b8abb764"
+          },
+          "/logs/raw013.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "64dc5a4530ae5eebf3430825ee0d28a121ce49dcb61951e149a08ce3b902f609"
+          },
+          "/logs/raw014.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "d82b6bf5cf984a35a299008bde141b1f8958cb3a00660d84d4e9908922f16a56"
+          },
+          "/logs/raw015.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "1252dc7f039d558704d8c1e71fccdb734853b947f819637cb98abc677405e706"
+          },
+          "/logs/raw016.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "117fec45c6d3a4e9cdbfc04ad6855334b6d8bd8f47a2c0e934c8a57c822eb6d2"
+          },
+          "/logs/raw017.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "79d31b346c25551af28f3a770de04cd5812d535057c204c8cf989e9dbd8c36f9"
+          },
+          "/logs/raw018.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "4e6439042acb6b6064482a1cb849444666e932e2b5e6c87c353c1652d7d468f0"
+          },
+          "/logs/raw019.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "bca12a0b06bdde4066552272a4761e3a6c5f956a9496b309b59252099d8a5f5d"
+          },
+          "/logs/raw020.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "3ebeea35f3d1331a5e004beb31879014882dff79fac317aa52b244eb8527f9b1"
+          },
+          "/logs/raw021.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "35859b1e75ce72a0512c7f5813acf69ec74db8703b91c850dc27a965f8e49c99"
+          },
+          "/logs/raw022.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "d6fc0fee849006bee441591ecc5ad2831b9f686bf43510bf87c353281a1973a5"
+          },
+          "/logs/raw023.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "9c63b4ab9689c8e9b8e99675a643ca0faead644f1239eff0c6514f7a5c1e2f6c"
+          },
+          "/logs/raw024.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "9a794aafc339e714dfb7e0a87247acf20da3ca45928583a3114525ee268e30f3"
+          },
+          "/logs/raw025.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "68c13e6c3ebea07209874d12467df4010b999f022ced432ab2ef0825a7d6f307"
+          },
+          "/logs/raw026.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "195636dee3c3cda0e601aa009b0503c4fcc4329f75b66a96d531ccae49d3ef94"
+          },
+          "/logs/raw027.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "3a36e78aa63be91082f9068c8857a9bca3ade0f97093a33d04c1d5c25b54abe0"
+          },
+          "/logs/raw028.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "3e303cb827f5e639fbfd21899d9392e113fd07f3cf19a36a4b39f1d3c1cd8f1c"
+          },
+          "/logs/raw029.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "660ebab35334740a8ce2c9fb7a19ff6eb0d460075bc2759653db66603c5f571b"
+          },
+          "/logs/raw030.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "5fe38138b8bdd5de9da34d1e1520f4745187e19f82bc799cb1aaa9f512c970e0"
+          },
+          "/logs/raw031.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "5dcb16b99632ab85ffb3c30b5a506128f35fc7f76a1f7318b71c835083699ae4"
+          },
+          "/logs/raw032.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "98510b5c8838a85d5ec361e94c5060a1904f8c6126f0cc278bad9b888d2e1799"
+          },
+          "/logs/raw033.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "189f3ed39e47dad775d225fc21ac43ee7fe547cf62e7666ee70b3d180ed20f0e"
+          },
+          "/logs/raw034.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "75d8688eab8dfd7ef0442279a3e8993db76ce2a3003afc4181924ae7801b33aa"
+          },
+          "/logs/raw035.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "80586f08ab01c2b1e47c90a9e8df39c7d3ee2bd83e4e5fab3b83cba77d510874"
+          },
+          "/logs/raw036.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "bdbfce76aba7153051662653b381612a2e63301c123a6ae14ed37561bd99beb6"
+          },
+          "/logs/raw037.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "26a4366000bda319a5877490a780fd425aad6d012efe4ccbc120f299ca049e96"
+          },
+          "/logs/raw038.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "83dc1c2b725d50c36f81d06c99ca9349eee7b16bab8aa5f6d8e22a77512ce26f"
+          },
+          "/logs/raw039.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "d4f0d8e731873ede62d52ab70732751cc179259b2d5a9a1046367f3cae996cae"
+          },
+          "/logs/raw040.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "2a87547c8a3c10557811cc3d893a4fb8e9ee63bde91bfb94269bc14e9019df88"
+          },
+          "/logs/raw041.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "fe7f9debf1b1b983d55181a9977bf04ff532742de7138f3bf4c0dc8d9e25fb3c"
+          },
+          "/logs/raw042.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "507b2895a815a50a98d0a5cf84837d17a74e7b917333d8d8bd8a6607a6faae6e"
+          },
+          "/logs/raw043.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "69bf8308fc552b59e0f9dbce586a94656627521914277d87929264d6103ae12f"
+          },
+          "/logs/raw044.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "fd9c6ee48ef872384b18ec5d95f1aecb91317338d0a524845d8d676645d6f005"
+          }
+        }
+      },
+      "request": {
+        "type": "LIST",
+        "seq": 44,
+        "payload": {
+          "dir": "/logs/",
+          "want_hashes": 0,
+          "start_index": 0
+        }
+      },
+      "wire_in": "a5032c0a00062f6c6f67732f0000005274",
+      "expect": [
+        {
+          "frame": {
+            "type": "LIST",
+            "seq": 44,
+            "payload": {
+              "start_index": 0,
+              "count": 42,
+              "entries": [
+                {
+                  "name": "raw000.log",
+                  "size": 6,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw001.log",
+                  "size": 6,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw002.log",
+                  "size": 6,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw003.log",
+                  "size": 6,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw004.log",
+                  "size": 6,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw005.log",
+                  "size": 6,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw006.log",
+                  "size": 6,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw007.log",
+                  "size": 6,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw008.log",
+                  "size": 6,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw009.log",
+                  "size": 6,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw010.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw011.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw012.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw013.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw014.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw015.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw016.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw017.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw018.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw019.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw020.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw021.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw022.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw023.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw024.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw025.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw026.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw027.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw028.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw029.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw030.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw031.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw032.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw033.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw034.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw035.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw036.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw037.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw038.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw039.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw040.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw041.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                }
+              ],
+              "more": 1
+            }
+          },
+          "wire_out": "a5032cf50300002a000a7261773030302e6c6f67060000000000000000000000000a7261773030312e6c6f67060000000000000000000000000a7261773030322e6c6f67060000000000000000000000000a7261773030332e6c6f67060000000000000000000000000a7261773030342e6c6f67060000000000000000000000000a7261773030352e6c6f67060000000000000000000000000a7261773030362e6c6f67060000000000000000000000000a7261773030372e6c6f67060000000000000000000000000a7261773030382e6c6f67060000000000000000000000000a7261773030392e6c6f67060000000000000000000000000a7261773031302e6c6f67070000000000000000000000000a7261773031312e6c6f67070000000000000000000000000a7261773031322e6c6f67070000000000000000000000000a7261773031332e6c6f67070000000000000000000000000a7261773031342e6c6f67070000000000000000000000000a7261773031352e6c6f67070000000000000000000000000a7261773031362e6c6f67070000000000000000000000000a7261773031372e6c6f67070000000000000000000000000a7261773031382e6c6f67070000000000000000000000000a7261773031392e6c6f67070000000000000000000000000a7261773032302e6c6f67070000000000000000000000000a7261773032312e6c6f67070000000000000000000000000a7261773032322e6c6f67070000000000000000000000000a7261773032332e6c6f67070000000000000000000000000a7261773032342e6c6f67070000000000000000000000000a7261773032352e6c6f67070000000000000000000000000a7261773032362e6c6f67070000000000000000000000000a7261773032372e6c6f67070000000000000000000000000a7261773032382e6c6f67070000000000000000000000000a7261773032392e6c6f67070000000000000000000000000a7261773033302e6c6f67070000000000000000000000000a7261773033312e6c6f67070000000000000000000000000a7261773033322e6c6f67070000000000000000000000000a7261773033332e6c6f67070000000000000000000000000a7261773033342e6c6f67070000000000000000000000000a7261773033352e6c6f67070000000000000000000000000a7261773033362e6c6f67070000000000000000000000000a7261773033372e6c6f67070000000000000000000000000a7261773033382e6c6f67070000000000000000000000000a7261773033392e6c6f67070000000000000000000000000a7261773034302e6c6f67070000000000000000000000000a7261773034312e6c6f6707000000000000000000000000019445"
+        }
+      ],
+      "notes": "PAGINATION: 45 rolling logs at 24 B/entry overflow max_payload=1024. Light fills 42 entries (1013 B, the most that fit) and sets more=1. Prime must re-issue with start_index advanced by count. Before pagination existed, this reply was oversized and \u00a72 made Prime discard it \u2014 a sync that broke exactly when the card held the most to rescue.",
+      "pins_open_behavior": true
+    },
+    {
+      "id": "list-logs-paginated-page2",
+      "section": "\u00a74.LIST",
+      "kind": "exchange",
+      "light_state": {
+        "files": {
+          "/logs/raw000.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "9578018d030613c69de7c33290f2236952ceff2b2dfc3bb10c9d51e26609e094"
+          },
+          "/logs/raw001.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "4f1faebb555351929074bd5f6acf5369e39111e74453a06eed5c6309c5e14f5a"
+          },
+          "/logs/raw002.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "6ce3b98dc9575d848d4d800eb606ca6d9bcfcd4af635181c5fe061b464fdec22"
+          },
+          "/logs/raw003.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "406bd3fd4f26464043c51734ecf9e7b51b5e9df378f43bb786ea4e409fbb615b"
+          },
+          "/logs/raw004.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "a605eb8b7d185be8e630b3d3bb2f4eff11fc05772442b9ce8fe8e81c18465ae0"
+          },
+          "/logs/raw005.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "a9afce9f46270b452c6d3c9dffb47c4fc92d4b395ef1179175b7907a6d0bfffc"
+          },
+          "/logs/raw006.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "3620c814b1df065cf1767cc76714a486f44ffbb2a6fce6dc9c07e4d83bd87b8e"
+          },
+          "/logs/raw007.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "0d71e3dc64002d3a50ca71a910c7ca47e9836b03ce3db165ab2137680f619d2e"
+          },
+          "/logs/raw008.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "65ba234ef98f379ce742c6bcade9f108238063478e9c4ebddccba054a2fce59d"
+          },
+          "/logs/raw009.log": {
+            "size": 6,
+            "mtime": 0,
+            "sha256": "0bb0ac25c72e6ef4e10f48d2a830a49e048d9e4fdaf4e9d6a5c41c5581dd5692"
+          },
+          "/logs/raw010.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "2982be9278ea275527987d30c6059971d15fec7ef4042b6b40cfe4367f01aad2"
+          },
+          "/logs/raw011.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "8d2df43dde993494975decdd0599db1aeb97b0c6bfe78ca2ff6669b28e81bf98"
+          },
+          "/logs/raw012.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "f0a019e0ac3a2c496cbcefc559fbdc7a43ba6f1955c20fa90d23c661b8abb764"
+          },
+          "/logs/raw013.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "64dc5a4530ae5eebf3430825ee0d28a121ce49dcb61951e149a08ce3b902f609"
+          },
+          "/logs/raw014.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "d82b6bf5cf984a35a299008bde141b1f8958cb3a00660d84d4e9908922f16a56"
+          },
+          "/logs/raw015.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "1252dc7f039d558704d8c1e71fccdb734853b947f819637cb98abc677405e706"
+          },
+          "/logs/raw016.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "117fec45c6d3a4e9cdbfc04ad6855334b6d8bd8f47a2c0e934c8a57c822eb6d2"
+          },
+          "/logs/raw017.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "79d31b346c25551af28f3a770de04cd5812d535057c204c8cf989e9dbd8c36f9"
+          },
+          "/logs/raw018.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "4e6439042acb6b6064482a1cb849444666e932e2b5e6c87c353c1652d7d468f0"
+          },
+          "/logs/raw019.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "bca12a0b06bdde4066552272a4761e3a6c5f956a9496b309b59252099d8a5f5d"
+          },
+          "/logs/raw020.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "3ebeea35f3d1331a5e004beb31879014882dff79fac317aa52b244eb8527f9b1"
+          },
+          "/logs/raw021.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "35859b1e75ce72a0512c7f5813acf69ec74db8703b91c850dc27a965f8e49c99"
+          },
+          "/logs/raw022.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "d6fc0fee849006bee441591ecc5ad2831b9f686bf43510bf87c353281a1973a5"
+          },
+          "/logs/raw023.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "9c63b4ab9689c8e9b8e99675a643ca0faead644f1239eff0c6514f7a5c1e2f6c"
+          },
+          "/logs/raw024.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "9a794aafc339e714dfb7e0a87247acf20da3ca45928583a3114525ee268e30f3"
+          },
+          "/logs/raw025.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "68c13e6c3ebea07209874d12467df4010b999f022ced432ab2ef0825a7d6f307"
+          },
+          "/logs/raw026.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "195636dee3c3cda0e601aa009b0503c4fcc4329f75b66a96d531ccae49d3ef94"
+          },
+          "/logs/raw027.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "3a36e78aa63be91082f9068c8857a9bca3ade0f97093a33d04c1d5c25b54abe0"
+          },
+          "/logs/raw028.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "3e303cb827f5e639fbfd21899d9392e113fd07f3cf19a36a4b39f1d3c1cd8f1c"
+          },
+          "/logs/raw029.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "660ebab35334740a8ce2c9fb7a19ff6eb0d460075bc2759653db66603c5f571b"
+          },
+          "/logs/raw030.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "5fe38138b8bdd5de9da34d1e1520f4745187e19f82bc799cb1aaa9f512c970e0"
+          },
+          "/logs/raw031.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "5dcb16b99632ab85ffb3c30b5a506128f35fc7f76a1f7318b71c835083699ae4"
+          },
+          "/logs/raw032.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "98510b5c8838a85d5ec361e94c5060a1904f8c6126f0cc278bad9b888d2e1799"
+          },
+          "/logs/raw033.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "189f3ed39e47dad775d225fc21ac43ee7fe547cf62e7666ee70b3d180ed20f0e"
+          },
+          "/logs/raw034.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "75d8688eab8dfd7ef0442279a3e8993db76ce2a3003afc4181924ae7801b33aa"
+          },
+          "/logs/raw035.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "80586f08ab01c2b1e47c90a9e8df39c7d3ee2bd83e4e5fab3b83cba77d510874"
+          },
+          "/logs/raw036.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "bdbfce76aba7153051662653b381612a2e63301c123a6ae14ed37561bd99beb6"
+          },
+          "/logs/raw037.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "26a4366000bda319a5877490a780fd425aad6d012efe4ccbc120f299ca049e96"
+          },
+          "/logs/raw038.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "83dc1c2b725d50c36f81d06c99ca9349eee7b16bab8aa5f6d8e22a77512ce26f"
+          },
+          "/logs/raw039.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "d4f0d8e731873ede62d52ab70732751cc179259b2d5a9a1046367f3cae996cae"
+          },
+          "/logs/raw040.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "2a87547c8a3c10557811cc3d893a4fb8e9ee63bde91bfb94269bc14e9019df88"
+          },
+          "/logs/raw041.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "fe7f9debf1b1b983d55181a9977bf04ff532742de7138f3bf4c0dc8d9e25fb3c"
+          },
+          "/logs/raw042.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "507b2895a815a50a98d0a5cf84837d17a74e7b917333d8d8bd8a6607a6faae6e"
+          },
+          "/logs/raw043.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "69bf8308fc552b59e0f9dbce586a94656627521914277d87929264d6103ae12f"
+          },
+          "/logs/raw044.log": {
+            "size": 7,
+            "mtime": 0,
+            "sha256": "fd9c6ee48ef872384b18ec5d95f1aecb91317338d0a524845d8d676645d6f005"
+          }
+        }
+      },
+      "request": {
+        "type": "LIST",
+        "seq": 45,
+        "payload": {
+          "dir": "/logs/",
+          "want_hashes": 0,
+          "start_index": 42
+        }
+      },
+      "wire_in": "a5032d0a00062f6c6f67732f002a001cd8",
+      "expect": [
+        {
+          "frame": {
+            "type": "LIST",
+            "seq": 45,
+            "payload": {
+              "start_index": 42,
+              "count": 3,
+              "entries": [
+                {
+                  "name": "raw042.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw043.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw044.log",
+                  "size": 7,
+                  "mtime": 0,
+                  "sha256_present": 0
+                }
+              ],
+              "more": 0
+            }
+          },
+          "wire_out": "a5032d4d002a0003000a7261773034322e6c6f67070000000000000000000000000a7261773034332e6c6f67070000000000000000000000000a7261773034342e6c6f670700000000000000000000000000d215"
+        }
+      ],
+      "notes": "PAGINATION: the second and final page. start_index is echoed so Prime can detect a desync; more=0 ends the walk. Prime MUST NOT DELETE from /logs/ while a pagination is in flight \u2014 indices shift and entries are skipped.",
+      "pins_open_behavior": true
+    },
+    {
+      "id": "list-start-index-past-end",
+      "section": "\u00a74.LIST",
+      "kind": "exchange",
+      "request": {
+        "type": "LIST",
+        "seq": 46,
+        "payload": {
+          "dir": "/logs/",
+          "want_hashes": 0,
+          "start_index": 99
+        }
+      },
+      "wire_in": "a5032e0a00062f6c6f67732f006300eda0",
+      "expect": [
+        {
+          "frame": {
+            "type": "LIST",
+            "seq": 46,
+            "payload": {
+              "start_index": 99,
+              "count": 0,
+              "entries": [],
+              "more": 0
+            }
+          },
+          "wire_out": "a5032e05006300000000e65e"
+        }
+      ],
+      "notes": "PINS: start_index at or past the end is benign \u2014 count=0, more=0, not an error. Mirrors GET's forgiveness of an offset past EOF (get-offset-past-eof).",
+      "pins_open_behavior": true
     }
   ]
 }

@@ -183,10 +183,11 @@ def set_clock_payload(epoch, quality):
     return struct.pack("<Q", int(epoch)) + bytes([quality])
 
 
-def list_payload(dirname, want_hashes):
+def list_payload(dirname, want_hashes, start_index=0):
     if dirname not in ("/logs/", "/tables/"):
         raise DockError("LIST accepts /logs/ or /tables/ only")
-    return pack_str(dirname) + bytes([1 if want_hashes else 0])
+    return (pack_str(dirname) + bytes([1 if want_hashes else 0])
+            + struct.pack("<H", start_index))
 
 
 def put_payload(path, offset, chunk):
@@ -241,8 +242,12 @@ def parse_set_clock(p):
 
 
 def parse_list(p):
-    count = struct.unpack_from("<H", p)[0]
-    off, entries = 2, []
+    """One PAGE of a LIST response (§4: LIST is paginated, and it must be)."""
+    if len(p) < 5:
+        raise DockError("short LIST response")
+    start_index = struct.unpack_from("<H", p)[0]
+    count = struct.unpack_from("<H", p, 2)[0]
+    off, entries = 4, []
     for _ in range(count):
         name, off = unpack_str(p, off)
         if len(p) < off + 13:
@@ -256,7 +261,10 @@ def parse_list(p):
                 raise DockError("truncated LIST sha256")
             entry["sha256"] = p[off:off + 32].hex(); off += 32
         entries.append(entry)
-    return {"count": count, "entries": entries}
+    if off + 1 != len(p):
+        raise DockError("LIST response length mismatch")
+    return {"start_index": start_index, "count": count, "entries": entries,
+            "more": p[off]}
 
 
 def parse_put(p):
@@ -376,7 +384,26 @@ class DockClient:
         return self.request("SET_CLOCK", set_clock_payload(epoch, quality))
 
     def list_dir(self, dirname, want_hashes):
-        return self.request("LIST", list_payload(dirname, want_hashes))
+        """The complete directory: walks §4 pagination until more=0.
+
+        The whole walk finishes inside this call, which is what upholds the
+        §4 ordering rule — Prime never mutates a directory mid-pagination
+        because no mutation can be issued while this loop owns the port.
+        """
+        entries, start = [], 0
+        while True:
+            page = self.request("LIST",
+                                list_payload(dirname, want_hashes, start))
+            if page["start_index"] != start:
+                # the §4 desync tell: indices shifted under the walk
+                raise DockError("LIST desync: asked from %d, got page at %d"
+                                % (start, page["start_index"]))
+            entries.extend(page["entries"])
+            if not page["more"]:
+                return {"count": len(entries), "entries": entries}
+            if not page["count"]:
+                raise DockError("LIST stalled: more=1 with an empty page")
+            start += page["count"]
 
     def put(self, path, offset, chunk):
         return self.request("PUT", put_payload(path, offset, chunk))

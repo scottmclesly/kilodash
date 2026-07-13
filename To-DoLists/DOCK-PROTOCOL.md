@@ -1,6 +1,6 @@
 # DOCK-PROTOCOL.md
 
-**Status:** v0.1 — DRAFT, awaiting ratification by both sides.
+**Status:** v1.0 — RATIFIED by both sides, 2026-07-12.
 **Protocol version:** `1`
 **Mirrored verbatim** in [Scottina-Light](https://github.com/scottmclesly/Scottina-Light)
 (firmware, responder) and kilodash (Prime, initiator). Neither side changes this
@@ -171,12 +171,14 @@ Request:
 ```
   str     dir                    "/logs/" or "/tables/" only
   u8      want_hashes            0 | 1
+  u16     start_index            first entry to return; 0 for the first page
 ```
 
 Response:
 
 ```
-  u16     count
+  u16     start_index            echoed
+  u16     count                  entries in THIS page
   count × {
     str   name                   leaf name, no directory part
     u32   size
@@ -184,7 +186,30 @@ Response:
     u8    sha256_present         0 | 1
     32B   sha256                 present only when sha256_present = 1
   }
+  u8      more                   1 = further entries exist past this page
 ```
+
+**`LIST` is paginated, and it must be.** An entry costs 24 bytes unhashed
+(`raw000.log`) and 56–63 hashed. Against `max_payload = 1024` that is **~42
+unhashed logs** or **~16–18 hashed tables** before the response no longer fits —
+and an oversized reply is not a soft failure: per §2 Prime discards it, so a sync
+would break precisely when the card holds the most to rescue. Light fills a page
+up to `max_payload`, sets `more = 1` if entries remain, and Prime re-issues with
+`start_index` advanced by `count` until `more = 0`.
+
+`start_index` at or past the end is **benign**: `count = 0`, `more = 0`. Not an
+error — the same forgiveness `GET` extends to an offset past EOF.
+
+**Ordering — the constraint index-based paging quietly depends on.** Light's
+enumeration order is unspecified (Prime treats a completed `LIST` as a *set*),
+but it MUST be **stable for the lifetime of a dock session**, or a paged read
+would skip or duplicate entries as indices shift under it.
+
+Therefore: **Prime MUST NOT mutate a directory while paginating it.** A `DELETE`
+in `/logs/`, or a `COMMIT` into `/tables/`, invalidates any pagination in flight
+over that directory. Finish the `LIST`, then mutate — or restart from
+`start_index = 0`. Light is permitted to renumber freely after any mutation, and
+the `start_index` echo is what lets Prime notice if it got this wrong.
 
 `want_hashes` exists because the two directories have different economics.
 Tables are kilobytes — Prime diffs them by name + sha256, so it asks for hashes
@@ -336,8 +361,27 @@ truthful log line, never a hung screen.
 |----------------------|---------------|
 | `HELLO`              | 2 s |
 | `SET_CLOCK`, `LIST`, `PUT`, `GET`, `BYE` | 2 s |
-| `DELETE`             | 30 s (may need to rehash a multi-MB file) |
-| `COMMIT`             | 30 s (hashes the staged file) |
+| `DELETE`             | **60 s** (may need to rehash a multi-MB file — see below) |
+| `COMMIT`             | 30 s (hashes the staged file, which is a table: kilobytes) |
+
+**Why `DELETE` gets 60 s and not 30.** The floor is a full re-read of the file
+over SPI-SD. At the 8 MHz bus `storage::begin()` configures, a FAT-mediated read
+lands around 400–700 KB/s, so an 8 MB log — exactly `logMaxBytes`' default cap —
+takes **16–27 s** to hash. The sha256 itself is minor (~2 s of CPU on the
+SAMD51); the read dominates. 30 s left no margin for a slow card or a fragmented
+volume.
+
+And the uncached path is not exotic — **it is the resume path.** A dock
+interrupted between `GET` and `DELETE` means the next dock finds a file Prime
+has already pulled and verified, so Prime skips the pull and issues `DELETE`
+straight into a cold cache. Auto-resume-on-redock is a headline feature of this
+design; the timeout must survive its own happy path.
+
+There is no way to duck the read: re-`GET`ting the file to warm the cache costs
+the same 16–27 s of SD reading *plus* the transfer. So the timeout accommodates
+it. In the common case — `GET` immediately followed by `DELETE` — the digest is
+already cached and `DELETE` returns in milliseconds. A timeout is a ceiling, not
+a delay.
 
 **Light-side dock watchdog: 10 s.** If no valid frame arrives while a dock
 session is open, Light performs an implicit `BYE` — closes handles, resumes
@@ -450,11 +494,30 @@ considered and rejected for v1: standalone logging plus clock sync covers the
 forensic case, which is the case that exists. If real-time fusion ever earns its
 keep, it is a new protocol version — not a bolt-on to this one.
 
-## Open decisions (resolve before v1.0)
+## Open decisions (ledger closed at v1.0)
 
-- [ ] **VID:PID and product string** — Phase 0 records what actually enumerates.
-      Nothing is hardcoded from memory.
-- [ ] **`max_payload`** — Light's v1 value, confirmed against the Phase-0
-      throughput measurement.
-- [ ] **Ratification** — both sides sign off, this file drops to `v1.0`, and the
-      DRAFT banner comes off.
+- [x] **VID:PID and product string** — `2886:802d`, product string
+      **`Seeed Wio Terminal`**. `v1-foundation` does not rename the CDC
+      descriptor, and it **must not be renamed without coordinating with Prime**:
+      the USB descriptor is the *detection* key, while `HELLO`'s `product` field
+      is the *protocol-level* identity. They are allowed to differ, and today
+      they do.
+- [x] **`max_payload` = 1024**, confirmed by the Light side. RAM is not the
+      binding constraint (SAMD51P19 has 192 KB); 1024 is what the vectors are
+      built against. Note that because this is negotiated in `HELLO`, raising it
+      later is **free and not a version bump** — if the Phase-0 throughput
+      number shows an 8 MB pull is round-trip-latency-bound rather than
+      bandwidth-bound (8192 sequential chunks × USB RTT is real), Light can
+      advertise a larger buffer and Prime will follow without a spec change.
+- [x] **`LIST` pagination** — added pre-ratification, `proto_version` stays `1`.
+- [x] **`DELETE` timeout 30 s → 60 s** — Light's analysis (§5). **Acked by
+      Prime** (kilodash `TIMEOUTS`, commit `f6accf6`); it is a change to
+      Prime's client-side behavior, not to the wire.
+- [x] **Phase-0 throughput measurement** — outstanding, and explicitly
+      **non-gating** per §3: it tunes Prime's chunk choice and progress-bar
+      math only. If it ever motivates a larger buffer, `max_payload` moves
+      without a version bump.
+- [x] **Ratification** — both sides signed off 2026-07-12: Light's frame
+      codec passes all 47 vectors as a unit test; Prime's sync engine runs
+      green against the fake Light replaying the same bytes. This file is
+      `v1.0`; the DRAFT banner is off.

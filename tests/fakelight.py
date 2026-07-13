@@ -63,8 +63,19 @@ class FakeLight:
         state = copy.deepcopy(doc["defaults"]["light_state"])
         state.update(state_overrides or {})
         self.state = state
-        self.files = {path: bytes.fromhex(fx["content_hex"])
-                      for path, fx in state["files"].items()}
+        # Fixtures may carry full content (content_hex) or, for LIST-only
+        # fixtures like the 45-log pagination set, just size + sha256. The
+        # declared sha stays authoritative for hashing; the filler content
+        # only ever feeds size-driven paths.
+        self.files = {}
+        self.fixture_sha = {}
+        for path, fx in state["files"].items():
+            if "content_hex" in fx:
+                self.files[path] = bytes.fromhex(fx["content_hex"])
+            else:
+                self.files[path] = bytes(fx["size"])
+            if fx.get("sha256"):
+                self.fixture_sha[path] = fx["sha256"]
         self.staged = {path: bytearray(self.files.get(path, b"")[:n])
                        for path, n in state.get("staged", {}).items()}
         self.open_path = state.get("open_path")
@@ -120,6 +131,14 @@ class FakeLight:
         if not self.state["sd_present"]:
             raise _Reject("ERR_NO_SD")
 
+    def _sha(self, path):
+        """Digest of a file — the fixture's declared sha256 wins over the
+        (possibly filler) content bytes."""
+        declared = self.fixture_sha.get(path)
+        if declared:
+            return bytes.fromhex(declared)
+        return hashlib.sha256(self.files[path]).digest()
+
     # ------------------------------------------------------------ commands --
     def _cmd_hello(self, seq, payload):
         st = self.state
@@ -148,23 +167,36 @@ class FakeLight:
 
     def _cmd_list(self, seq, payload):
         dirname, off = unpack_str(payload, 0)
+        if len(payload) != off + 3:
+            raise _Reject("ERR_BAD_FRAME")      # v0.1 shape, or garbage
         want_hashes = payload[off]
+        start_index = struct.unpack_from("<H", payload, off + 1)[0]
         if dirname not in ("/logs/", "/tables/"):
             raise _Reject("ERR_PATH_REJECTED")
         self._need_sd()
         names = sorted(p for p in self.files
                        if p.startswith(dirname) and p != self.open_path)
-        body = struct.pack("<H", len(names))
-        for p in names:
+        # §4 page fill, matching Light's exactly: greedy while the payload
+        # (4-byte header + entries + the trailing `more` byte) still fits
+        # max_payload. 42 unhashed 24 B entries = 1013 B against 1024.
+        max_payload = self.state["max_payload"]
+        body, count = b"", 0
+        for p in names[start_index:]:
             content = self.files[p]
-            body += (pack_str(p[len(dirname):])
-                     + struct.pack("<I", len(content))
-                     + struct.pack("<Q", 0))
+            eb = (pack_str(p[len(dirname):])
+                  + struct.pack("<I", len(content)) + struct.pack("<Q", 0))
             if want_hashes:
-                body += bytes([1]) + hashlib.sha256(content).digest()
+                eb += bytes([1]) + self._sha(p)
             else:
-                body += bytes([0])
-        return build_frame("LIST", seq, body)
+                eb += bytes([0])
+            if 4 + len(body) + len(eb) + 1 > max_payload:
+                break
+            body += eb
+            count += 1
+        more = 1 if start_index + count < len(names) else 0
+        return build_frame("LIST", seq,
+                           struct.pack("<H", start_index)
+                           + struct.pack("<H", count) + body + bytes([more]))
 
     @staticmethod
     def _writable(path):
@@ -205,6 +237,7 @@ class FakeLight:
         if hashlib.sha256(staged).digest() != digest:
             raise _Reject("ERR_HASH_MISMATCH")      # staging file unlinked
         self.files[path] = staged                   # atomic rename
+        self.fixture_sha.pop(path, None)            # declared sha now stale
         return build_frame("COMMIT", seq, bytes([1]))
 
     def _cmd_get(self, seq, payload):
@@ -239,9 +272,10 @@ class FakeLight:
         self._need_sd()
         if path not in self.files:
             raise _Reject("ERR_NOT_FOUND")
-        if hashlib.sha256(self.files[path]).digest() != digest:
+        if self._sha(path) != digest:
             raise _Reject("ERR_HASH_MISMATCH")      # file untouched
         del self.files[path]                        # match, and only match
+        self.fixture_sha.pop(path, None)
         return build_frame("DELETE", seq, bytes([1]))
 
     def _cmd_bye(self, seq, payload):
