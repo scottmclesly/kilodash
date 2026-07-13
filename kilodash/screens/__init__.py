@@ -15,6 +15,7 @@ from .i2cscan import I2cScreen
 from .serialmon import SerialScreen
 from .logic import LogicScreen
 from .files import FilesScreen
+from .lightdock import LightDockScreen
 from .kismet import KismetScreen
 from .nodered import NodeRedScreen
 from .aiscatcher import AisCatcherScreen
@@ -35,6 +36,7 @@ SCREENS = [
     SerialScreen,        # device: serial
     LogicScreen,         # device: la (FX2LP logic analyzer)
     FilesScreen,         # device: usbstick (log offload + decode tables)
+    LightDockScreen,     # device: scottinalight (dock auto-sync)
     TablesScreen,        # always visible: converter service + store mirror
     KismetScreen,        # web app: kismet (tile shows if installed)
     NodeRedScreen,       # web app: node-red (tile shows if installed)

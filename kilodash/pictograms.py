@@ -219,6 +219,18 @@ def _files(d, cx, cy, r, c):
                cx, cy + 0.5 * r), fill=c)
 
 
+def _lightdock(d, cx, cy, r, c):
+    """Dock: the big slab and the small slab joined by a live umbilical."""
+    lw = _lw(r)
+    # Prime (left, larger) and Light (right, smaller) silhouettes
+    d.rectangle((cx - r, cy - r * 0.7, cx - r * 0.35, cy + r * 0.7),
+                outline=c, width=lw)
+    d.rectangle((cx + r * 0.45, cy - r * 0.45, cx + r, cy + r * 0.45),
+                outline=c, width=lw)
+    d.line((cx - r * 0.35, cy, cx + r * 0.45, cy), fill=c, width=lw)
+    _dot(d, cx + r * 0.05, cy, r * 0.14, c)     # the pulse on the wire
+
+
 def _settings(d, cx, cy, r, c):
     """Maintenance: ring with radial adjustment ticks."""
     lw = _lw(r)
@@ -239,6 +251,7 @@ _GLYPHS = {
     "serial": _serial,
     "logic": _logic,
     "files": _files,
+    "lightdock": _lightdock,
     "kismet": _kismet,
     "nodered": _nodered,
     "ais": _ais,

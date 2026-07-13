@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Light Dock** (contract in `DOCK-PROTOCOL.md`, mirrored verbatim with the
+  [Scottina-Light](https://github.com/scottmclesly/Scottina-Light) firmware
+  repo; shared conformance asset `To-DoLists/dock-vectors.json`):
+  - **Sync engine** (`kilodash/lightdock.py`) — dock Scottina Light on USB
+    and it syncs itself: HELLO → clock push (honest quality: `ntp` only
+    while NTP is synchronized *right now*, never laundered) → decode-table
+    push (TABLES.md §5 export shape, name+sha256 diff, staged PUT + atomic
+    verify-then-COMMIT; Prime always wins) → log pull into
+    `captures/light-<name>` (checksum-verified, **deleted from Light only
+    after proof of receipt**) → BYE. Every request timeout-bounded; §2
+    resync scanner never allocates on an unvalidated length; redock just
+    reruns the diff — no resume state on either side. `max_payload` is
+    negotiated in HELLO, so chunk sizes stay parameterized until the
+    Phase-0 throughput number lands.
+  - **Light Dock screen** (`kilodash/screens/lightdock.py`, hotplug key
+    `scottinalight` — Seeed VID 2886:802d + product string, never the ACM
+    index) — two-distance UI: across-the-room phosphor animation (pulses
+    riding the cable while syncing, the hug when complete, sad face +
+    broken cable on interruption) as the only dirty-rect region between
+    log lines, over a session-only log of the engine's lines verbatim,
+    including the logging-suspended statement (§6). Controls: **Re-sync**
+    and the **auto-pull-logs** toggle (`lightdock_pull_logs`, also in
+    Settings). Redock while open restarts the sync automatically.
+  - **Fake Light** (`tests/fakelight.py`) — a vector-pinned protocol
+    responder on a PTY; the engine's whole test suite
+    (`tests/test_lightdock.py`) runs against it with no firmware in the
+    loop, per DOCK-PROTOCOL.md §10. User guide `docs/LIGHTDOCK.md`.
+
 - **CAN / NMEA2K split + Tables converter** (contract in `TABLES.md`):
   - **CAN screen refactor** — raw-bus forensics for reverse-engineering:
     seen-IDs table (count/rate/last payload/changed-bytes highlight since

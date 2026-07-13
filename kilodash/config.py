@@ -60,6 +60,11 @@ DEFAULTS = {
     # defaults under a partially-saved block after upgrades.
     "cantick": {"value": dict(cantick.CONFIG_DEFAULTS), "type": "hidden",
                 "label": "CanTick bridge", "group": "System"},
+    # Light Dock (DOCK-PROTOCOL.md): the one costly sync step is optional.
+    # Also toggleable from the Light Dock screen itself.
+    "lightdock_pull_logs": {"value": True, "type": "bool",
+                            "label": "Light Dock: auto-pull logs",
+                            "group": "System"},
 }
 
 
