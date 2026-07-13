@@ -1,0 +1,1465 @@
+{
+  "$comment": "Conformance vectors for DOCK-PROTOCOL.md. Generated, not hand-edited: every CRC and sha256 is computed. Mirrored verbatim in scottmclesly/Scottina-Light and kilodash, next to DOCK-PROTOCOL.md, per its \u00a710.",
+  "protocol": "DOCK-PROTOCOL.md",
+  "protocol_version": 1,
+  "vectors_version": "0.1.0",
+  "framing": {
+    "sof": "0xa5",
+    "layout": "SOF u8 | TYPE u8 | SEQ u8 | LEN u16le | PAYLOAD | CRC16le over TYPE..PAYLOAD",
+    "crc": {
+      "name": "CRC-16/CCITT-FALSE",
+      "poly": "0x1021",
+      "init": "0xffff",
+      "reflect": false,
+      "xorout": "0x0000",
+      "check_input_ascii": "123456789",
+      "check_value": "0x29b1"
+    },
+    "strings": "u8 length + UTF-8 bytes, no NUL terminator",
+    "endianness": "little, every multi-byte integer"
+  },
+  "conventions": {
+    "wire_in": "hex bytes Prime writes to the port, verbatim \u2014 may include garbage, corruption, or several frames",
+    "expect": "ordered Light->Prime frames; each has a decoded 'frame' view and exact 'wire_out' hex. Empty list = no response; Prime's per-request timeout (\u00a75) is the pass condition.",
+    "light_state": "overrides applied to defaults.light_state for this vector only. 'staged' maps a path to bytes already in its .partial file; 'open_path' marks a file held open (ERR_BUSY).",
+    "error_frames": "conformance requires TYPE, SEQ and code to match; the message string is informative \u2014 real firmware may word it differently. The fake Light replays wire_out verbatim.",
+    "list_order": "the fake Light lists lexicographically; firmware order is unspecified. Conformance for LIST is set-equality on entries.",
+    "pins_open_behavior": "true marks a vector that fixes behavior v0.1 left open \u2014 reviewed by the firmware side before ratification; a veto changes the vector AND the spec together."
+  },
+  "defaults": {
+    "light_state": {
+      "proto_version": 1,
+      "product": "Scottina Light",
+      "fw_version": "v1-foundation",
+      "sd_present": 1,
+      "clock_epoch": 0,
+      "clock_quality": 0,
+      "clock_set_this_boot": 0,
+      "max_payload": 1024,
+      "flags": 3,
+      "files": {
+        "/logs/raw000.log": {
+          "content_hex": "909396999c9fa2a5a8abaeb1b4b7babdc0c3c6c9cccfd2d5d8dbdee1e4e7eaedf0f3f6f9fcff0205080b0e1114171a1d202326292c2f3235383b3e4144474a4d505356595c5f6265686b6e7174777a7d808386898c8f9295989b9ea1a4a7aaad",
+          "size": 96,
+          "mtime": 0,
+          "sha256": "36e77ef970009e64cfa7f4ef1a3d970d20da05bc3d33304e7be2ff4b81b44b5e"
+        },
+        "/logs/raw001.log": {
+          "content_hex": "68656c6c6f20626c61636b20626f780a",
+          "size": 16,
+          "mtime": 0,
+          "sha256": "8046883a45287e8020ad0ae66f450f7ad99a629210f7d3670627e490d0336135"
+        },
+        "/tables/nmea2000-std.json": {
+          "content_hex": "7b2270676e223a3132373438382c226e616d65223a22656e67696e655261706964227d0a",
+          "size": 36,
+          "mtime": 0,
+          "sha256": "7aac5a0b0e0c4d2732ce21fd6100f5205bcf21339df79f00fbd695855f71d41a"
+        }
+      }
+    }
+  },
+  "types": {
+    "0x01": "HELLO",
+    "0x02": "SET_CLOCK",
+    "0x03": "LIST",
+    "0x04": "PUT",
+    "0x05": "COMMIT",
+    "0x06": "GET",
+    "0x07": "DELETE",
+    "0x08": "BYE",
+    "0xef": "ERROR"
+  },
+  "error_codes": {
+    "0x0001": "ERR_BAD_CRC",
+    "0x0002": "ERR_BAD_FRAME",
+    "0x0003": "ERR_UNKNOWN_TYPE",
+    "0x0004": "ERR_NO_SD",
+    "0x0005": "ERR_PATH_REJECTED",
+    "0x0006": "ERR_NOT_FOUND",
+    "0x0007": "ERR_IO",
+    "0x0008": "ERR_HASH_MISMATCH",
+    "0x0009": "ERR_BUSY",
+    "0x000a": "ERR_UNSUPPORTED_VER",
+    "0x000b": "ERR_TOO_LARGE"
+  },
+  "vectors": [
+    {
+      "id": "hello",
+      "section": "\u00a74.HELLO",
+      "kind": "exchange",
+      "request": {
+        "type": "HELLO",
+        "seq": 1,
+        "payload": {}
+      },
+      "wire_in": "a50101000044c5",
+      "expect": [
+        {
+          "frame": {
+            "type": "HELLO",
+            "seq": 1,
+            "payload": {
+              "proto_version": 1,
+              "product": "Scottina Light",
+              "fw_version": "v1-foundation",
+              "sd_present": 1,
+              "clock_epoch": 0,
+              "clock_quality": 0,
+              "clock_set_this_boot": 0,
+              "max_payload": 1024,
+              "flags": 3
+            }
+          },
+          "wire_out": "a501012d0001000e53636f7474696e61204c696768740d76312d666f756e646174696f6e0100000000000000000000000403ce1f"
+        }
+      ],
+      "notes": "Cold-boot Light, SD present, logging was active and is now suspended by the dock (flags bit0|bit1). clock_epoch=0, quality=unsynced, never set this boot."
+    },
+    {
+      "id": "set-clock-ntp",
+      "section": "\u00a74.SET_CLOCK",
+      "kind": "exchange",
+      "request": {
+        "type": "SET_CLOCK",
+        "seq": 2,
+        "payload": {
+          "epoch": 1767225600,
+          "quality": 2,
+          "quality_name": "ntp"
+        }
+      },
+      "wire_in": "a50202090000b9556900000000023b98",
+      "expect": [
+        {
+          "frame": {
+            "type": "SET_CLOCK",
+            "seq": 2,
+            "payload": {
+              "ok": 1,
+              "epoch_echo": 1767225600
+            }
+          },
+          "wire_out": "a5020209000100b9556900000000496e"
+        }
+      ],
+      "notes": "Prime is NTP-synchronized right now; quality=2 is honest."
+    },
+    {
+      "id": "set-clock-rtc",
+      "section": "\u00a74.SET_CLOCK",
+      "kind": "exchange",
+      "request": {
+        "type": "SET_CLOCK",
+        "seq": 3,
+        "payload": {
+          "epoch": 1767225660,
+          "quality": 1,
+          "quality_name": "rtc"
+        }
+      },
+      "wire_in": "a5020309003cb9556900000000013fea",
+      "expect": [
+        {
+          "frame": {
+            "type": "SET_CLOCK",
+            "seq": 3,
+            "payload": {
+              "ok": 1,
+              "epoch_echo": 1767225660
+            }
+          },
+          "wire_out": "a502030900013cb9556900000000573a"
+        }
+      ],
+      "notes": "No NTP, but Pi 5 RTC (coin cell fitted) is plausible: quality=rtc."
+    },
+    {
+      "id": "list-logs-no-hashes",
+      "section": "\u00a74.LIST",
+      "kind": "exchange",
+      "request": {
+        "type": "LIST",
+        "seq": 4,
+        "payload": {
+          "dir": "/logs/",
+          "want_hashes": 0
+        }
+      },
+      "wire_in": "a503040800062f6c6f67732f001f49",
+      "expect": [
+        {
+          "frame": {
+            "type": "LIST",
+            "seq": 4,
+            "payload": {
+              "count": 2,
+              "entries": [
+                {
+                  "name": "raw000.log",
+                  "size": 96,
+                  "mtime": 0,
+                  "sha256_present": 0
+                },
+                {
+                  "name": "raw001.log",
+                  "size": 16,
+                  "mtime": 0,
+                  "sha256_present": 0
+                }
+              ]
+            }
+          },
+          "wire_out": "a50304320002000a7261773030302e6c6f67600000000000000000000000000a7261773030312e6c6f6710000000000000000000000000983a"
+        }
+      ],
+      "notes": "Log economics: no hashes requested, none returned. The fake Light lists lexicographically; firmware entry order is unspecified \u2014 conformance for LIST is set-equality on entries, not order. The active log file is never in this listing (\u00a76)."
+    },
+    {
+      "id": "list-tables-hashes",
+      "section": "\u00a74.LIST",
+      "kind": "exchange",
+      "request": {
+        "type": "LIST",
+        "seq": 5,
+        "payload": {
+          "dir": "/tables/",
+          "want_hashes": 1
+        }
+      },
+      "wire_in": "a503050a00082f7461626c65732f01259c",
+      "expect": [
+        {
+          "frame": {
+            "type": "LIST",
+            "seq": 5,
+            "payload": {
+              "count": 1,
+              "entries": [
+                {
+                  "name": "nmea2000-std.json",
+                  "size": 36,
+                  "mtime": 0,
+                  "sha256_present": 1,
+                  "sha256": "7aac5a0b0e0c4d2732ce21fd6100f5205bcf21339df79f00fbd695855f71d41a"
+                }
+              ]
+            }
+          },
+          "wire_out": "a5030541000100116e6d6561323030302d7374642e6a736f6e240000000000000000000000017aac5a0b0e0c4d2732ce21fd6100f5205bcf21339df79f00fbd695855f71d41a8ba7"
+        }
+      ],
+      "notes": "Table economics: hashes requested and served; Prime diffs by name+sha256."
+    },
+    {
+      "id": "put-chunk-0",
+      "section": "\u00a74.PUT",
+      "kind": "exchange",
+      "request": {
+        "type": "PUT",
+        "seq": 6,
+        "payload": {
+          "path": "/tables/nmea2000-std.json",
+          "offset": 0,
+          "chunk_len": 24,
+          "chunk_ascii": "{\"pgn\":127488,\"name\":\"en"
+        }
+      },
+      "wire_in": "a504063800192f7461626c65732f6e6d6561323030302d7374642e6a736f6e0000000018007b2270676e223a3132373438382c226e616d65223a22656ea35a",
+      "expect": [
+        {
+          "frame": {
+            "type": "PUT",
+            "seq": 6,
+            "payload": {
+              "ok": 1,
+              "total_bytes_staged": 24
+            }
+          },
+          "wire_out": "a5040605000118000000c449"
+        }
+      ],
+      "notes": "offset=0 creates/truncates the staging file /tables/nmea2000-std.json.partial. Destination untouched."
+    },
+    {
+      "id": "put-chunk-1",
+      "section": "\u00a74.PUT",
+      "kind": "exchange",
+      "light_state": {
+        "staged": {
+          "/tables/nmea2000-std.json": 24
+        }
+      },
+      "request": {
+        "type": "PUT",
+        "seq": 7,
+        "payload": {
+          "path": "/tables/nmea2000-std.json",
+          "offset": 24,
+          "chunk_len": 12,
+          "chunk_ascii": "gineRapid\"}\n"
+        }
+      },
+      "wire_in": "a504072c00192f7461626c65732f6e6d6561323030302d7374642e6a736f6e180000000c0067696e655261706964227d0a0934",
+      "expect": [
+        {
+          "frame": {
+            "type": "PUT",
+            "seq": 7,
+            "payload": {
+              "ok": 1,
+              "total_bytes_staged": 36
+            }
+          },
+          "wire_out": "a5040705000124000000cc6d"
+        }
+      ],
+      "notes": "Contiguous continuation of put-chunk-0."
+    },
+    {
+      "id": "commit",
+      "section": "\u00a74.COMMIT",
+      "kind": "exchange",
+      "light_state": {
+        "staged": {
+          "/tables/nmea2000-std.json": 36
+        }
+      },
+      "request": {
+        "type": "COMMIT",
+        "seq": 8,
+        "payload": {
+          "path": "/tables/nmea2000-std.json",
+          "sha256": "7aac5a0b0e0c4d2732ce21fd6100f5205bcf21339df79f00fbd695855f71d41a"
+        }
+      },
+      "wire_in": "a505083a00192f7461626c65732f6e6d6561323030302d7374642e6a736f6e7aac5a0b0e0c4d2732ce21fd6100f5205bcf21339df79f00fbd695855f71d41a4338",
+      "expect": [
+        {
+          "frame": {
+            "type": "COMMIT",
+            "seq": 8,
+            "payload": {
+              "ok": 1
+            }
+          },
+          "wire_out": "a505080100018990"
+        }
+      ],
+      "notes": "Light hashes the staged file, matches, atomically renames .partial -> path. No commit, no file."
+    },
+    {
+      "id": "get-chunk-0",
+      "section": "\u00a74.GET",
+      "kind": "exchange",
+      "request": {
+        "type": "GET",
+        "seq": 9,
+        "payload": {
+          "path": "/logs/raw000.log",
+          "offset": 0,
+          "max_len": 64
+        }
+      },
+      "wire_in": "a506091700102f6c6f67732f7261773030302e6c6f67000000004000c883",
+      "expect": [
+        {
+          "frame": {
+            "type": "GET",
+            "seq": 9,
+            "payload": {
+              "offset": 0,
+              "len": 64,
+              "data_hex": "909396999c9fa2a5a8abaeb1b4b7babdc0c3c6c9cccfd2d5d8dbdee1e4e7eaedf0f3f6f9fcff0205080b0e1114171a1d202326292c2f3235383b3e4144474a4d",
+              "eof": 0
+            }
+          },
+          "wire_out": "a506094700000000004000909396999c9fa2a5a8abaeb1b4b7babdc0c3c6c9cccfd2d5d8dbdee1e4e7eaedf0f3f6f9fcff0205080b0e1114171a1d202326292c2f3235383b3e4144474a4d00e4ac"
+        }
+      ],
+      "notes": "First chunk of a 96-byte file at max_len=64: 64 bytes, eof=0. The data contains 0xA5 \u2014 payload bytes are length-delimited, never scanned for SOF."
+    },
+    {
+      "id": "get-chunk-1-eof",
+      "section": "\u00a74.GET",
+      "kind": "exchange",
+      "request": {
+        "type": "GET",
+        "seq": 10,
+        "payload": {
+          "path": "/logs/raw000.log",
+          "offset": 64,
+          "max_len": 64
+        }
+      },
+      "wire_in": "a5060a1700102f6c6f67732f7261773030302e6c6f674000000040005a0d",
+      "expect": [
+        {
+          "frame": {
+            "type": "GET",
+            "seq": 10,
+            "payload": {
+              "offset": 64,
+              "len": 32,
+              "data_hex": "505356595c5f6265686b6e7174777a7d808386898c8f9295989b9ea1a4a7aaad",
+              "eof": 1
+            }
+          },
+          "wire_out": "a5060a2700400000002000505356595c5f6265686b6e7174777a7d808386898c8f9295989b9ea1a4a7aaad018a1f"
+        }
+      ],
+      "notes": "Final chunk: len < max_len and eof=1. Light has now streamed 0..eof and caches (path, size, sha256) for a cheap DELETE."
+    },
+    {
+      "id": "get-exact-boundary",
+      "section": "\u00a74.GET",
+      "kind": "exchange",
+      "request": {
+        "type": "GET",
+        "seq": 11,
+        "payload": {
+          "path": "/logs/raw001.log",
+          "offset": 0,
+          "max_len": 16
+        }
+      },
+      "wire_in": "a5060b1700102f6c6f67732f7261773030312e6c6f67000000001000dd1d",
+      "expect": [
+        {
+          "frame": {
+            "type": "GET",
+            "seq": 11,
+            "payload": {
+              "offset": 0,
+              "len": 16,
+              "data_ascii": "hello black box\n",
+              "eof": 1
+            }
+          },
+          "wire_out": "a5060b170000000000100068656c6c6f20626c61636b20626f780a01fd46"
+        }
+      ],
+      "notes": "PINS: when offset+len == file size, eof=1 even though len == max_len \u2014 'reaches end of file' means reaches, not passes. Saves Prime a zero-byte round trip and makes progress math exact.",
+      "pins_open_behavior": true
+    },
+    {
+      "id": "get-offset-past-eof",
+      "section": "\u00a74.GET",
+      "kind": "exchange",
+      "request": {
+        "type": "GET",
+        "seq": 12,
+        "payload": {
+          "path": "/logs/raw001.log",
+          "offset": 200,
+          "max_len": 64
+        }
+      },
+      "wire_in": "a5060c1700102f6c6f67732f7261773030312e6c6f67c8000000400054d5",
+      "expect": [
+        {
+          "frame": {
+            "type": "GET",
+            "seq": 12,
+            "payload": {
+              "offset": 200,
+              "len": 0,
+              "eof": 1
+            }
+          },
+          "wire_out": "a5060c0700c8000000000001b786"
+        }
+      ],
+      "notes": "PINS: offset at or past EOF is benign \u2014 len=0, eof=1, not an error. Keeps a re-pull after interruption free of edge cases.",
+      "pins_open_behavior": true
+    },
+    {
+      "id": "delete-verified",
+      "section": "\u00a74.DELETE",
+      "kind": "exchange",
+      "request": {
+        "type": "DELETE",
+        "seq": 13,
+        "payload": {
+          "path": "/logs/raw001.log",
+          "sha256": "8046883a45287e8020ad0ae66f450f7ad99a629210f7d3670627e490d0336135"
+        }
+      },
+      "wire_in": "a5070d3100102f6c6f67732f7261773030312e6c6f678046883a45287e8020ad0ae66f450f7ad99a629210f7d3670627e490d03361353c6e",
+      "expect": [
+        {
+          "frame": {
+            "type": "DELETE",
+            "seq": 13,
+            "payload": {
+              "ok": 1
+            }
+          },
+          "wire_out": "a5070d0100014f68"
+        }
+      ],
+      "notes": "Prime's digest over what it RECEIVED matches Light's digest over what it SENT. Match, and only match, unlinks."
+    },
+    {
+      "id": "bye",
+      "section": "\u00a74.BYE",
+      "kind": "exchange",
+      "request": {
+        "type": "BYE",
+        "seq": 14,
+        "payload": {}
+      },
+      "wire_in": "a5080e0000021a",
+      "expect": [
+        {
+          "frame": {
+            "type": "BYE",
+            "seq": 14,
+            "payload": {
+              "ok": 1
+            }
+          },
+          "wire_out": "a5080e0100016a96"
+        }
+      ],
+      "notes": "Light closes handles and resumes logging into a fresh file (\u00a76)."
+    },
+    {
+      "id": "hello-warm-reset",
+      "section": "\u00a74.HELLO",
+      "kind": "exchange",
+      "light_state": {
+        "clock_epoch": 1767225600,
+        "clock_quality": 1,
+        "clock_set_this_boot": 0
+      },
+      "request": {
+        "type": "HELLO",
+        "seq": 15,
+        "payload": {}
+      },
+      "wire_in": "a5010f000045de",
+      "expect": [
+        {
+          "frame": {
+            "type": "HELLO",
+            "seq": 15,
+            "payload": {
+              "proto_version": 1,
+              "product": "Scottina Light",
+              "fw_version": "v1-foundation",
+              "sd_present": 1,
+              "clock_epoch": 1767225600,
+              "clock_quality": 1,
+              "clock_set_this_boot": 0,
+              "max_payload": 1024,
+              "flags": 3
+            }
+          },
+          "wire_out": "a5010f2d0001000e53636f7474696e61204c696768740d76312d666f756e646174696f6e0100b9556900000000010000040307d1"
+        }
+      ],
+      "notes": "SAMD51 RTC survived a warm reset: nonzero epoch, clock_set_this_boot=0 \u2014 'probably still good'. Prime should still SET_CLOCK with its honest quality."
+    },
+    {
+      "id": "hello-no-sd",
+      "section": "\u00a74.HELLO",
+      "kind": "exchange",
+      "light_state": {
+        "sd_present": 0,
+        "flags": 0
+      },
+      "request": {
+        "type": "HELLO",
+        "seq": 16,
+        "payload": {}
+      },
+      "wire_in": "a50110000017b1",
+      "expect": [
+        {
+          "frame": {
+            "type": "HELLO",
+            "seq": 16,
+            "payload": {
+              "proto_version": 1,
+              "product": "Scottina Light",
+              "fw_version": "v1-foundation",
+              "sd_present": 0,
+              "clock_epoch": 0,
+              "clock_quality": 0,
+              "clock_set_this_boot": 0,
+              "max_payload": 1024,
+              "flags": 0
+            }
+          },
+          "wire_out": "a501102d0001000e53636f7474696e61204c696768740d76312d666f756e646174696f6e0000000000000000000000000400f3f1"
+        }
+      ],
+      "notes": "No card: sd_present=0, and no logging was active (flags=0). Engine: clock sync still runs; tables/logs are skipped with a truthful session-log line."
+    },
+    {
+      "id": "hello-proto-mismatch",
+      "section": "\u00a74.HELLO/\u00a78",
+      "kind": "exchange",
+      "light_state": {
+        "proto_version": 2
+      },
+      "request": {
+        "type": "HELLO",
+        "seq": 17,
+        "payload": {}
+      },
+      "wire_in": "a5011100002786",
+      "expect": [
+        {
+          "frame": {
+            "type": "HELLO",
+            "seq": 17,
+            "payload": {
+              "proto_version": 2,
+              "product": "Scottina Light",
+              "fw_version": "v1-foundation",
+              "sd_present": 1,
+              "clock_epoch": 0,
+              "clock_quality": 0,
+              "clock_set_this_boot": 0,
+              "max_payload": 1024,
+              "flags": 3
+            }
+          },
+          "wire_out": "a501112d0002000e53636f7474696e61204c696768740d76312d666f756e646174696f6e0100000000000000000000000403543c"
+        }
+      ],
+      "notes": "Future-Light answers HELLO (always wire-compatible, \u00a78). Engine: degrade to HELLO + SET_CLOCK + BYE and say so in the session log."
+    },
+    {
+      "id": "err-bad-crc",
+      "section": "\u00a74.ERROR/\u00a72",
+      "kind": "exchange",
+      "request": {
+        "type": "HELLO",
+        "seq": 18,
+        "payload": {},
+        "corruption": "last CRC byte XOR 0xFF"
+      },
+      "wire_in": "a5011200007720",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 18,
+            "payload": {
+              "code": 1,
+              "code_name": "ERR_BAD_CRC",
+              "message": "bad crc"
+            }
+          },
+          "wire_out": "a5ef120a00010007626164206372637464"
+        }
+      ],
+      "notes": "PINS the \u00a72-resync / ERR_BAD_CRC tension: when a syntactically complete frame (LEN within max_payload, all bytes received) fails CRC, Light replies ERR_BAD_CRC echoing the received SEQ, then rescans per \u00a72 (discard one byte past SOF). This frame contains no interior 0xA5, so exactly one ERROR is emitted. Headers that can't be trusted enough to reply to are the silent-resync cases (see resync-false-sof-huge-len).",
+      "pins_open_behavior": true
+    },
+    {
+      "id": "err-bad-frame-short-payload",
+      "section": "\u00a74.ERROR",
+      "kind": "exchange",
+      "request": {
+        "type": "SET_CLOCK",
+        "seq": 19,
+        "payload_hex": "00b955",
+        "malformation": "payload 3 bytes; SET_CLOCK needs 9"
+      },
+      "wire_in": "a50213030000b9555e05",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 19,
+            "payload": {
+              "code": 2,
+              "code_name": "ERR_BAD_FRAME",
+              "message": "bad frame"
+            }
+          },
+          "wire_out": "a5ef130c00020009626164206672616d654f6c"
+        }
+      ],
+      "notes": "CRC is valid so SEQ is trustworthy; the payload doesn't parse -> ERR_BAD_FRAME."
+    },
+    {
+      "id": "err-unknown-type",
+      "section": "\u00a74.ERROR/\u00a77",
+      "kind": "exchange",
+      "request": {
+        "type_byte": "0x7f",
+        "seq": 20,
+        "payload": {}
+      },
+      "wire_in": "a57f140000f88d",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 20,
+            "payload": {
+              "code": 3,
+              "code_name": "ERR_UNKNOWN_TYPE",
+              "message": "unknown type"
+            }
+          },
+          "wire_out": "a5ef140f0003000c756e6b6e6f776e207479706561d8"
+        }
+      ],
+      "notes": "0x7F is not in the allow-list. The positive allow-list is the scope constraint made mechanical."
+    },
+    {
+      "id": "err-no-sd",
+      "section": "\u00a74.ERROR",
+      "kind": "exchange",
+      "light_state": {
+        "sd_present": 0,
+        "files": {}
+      },
+      "request": {
+        "type": "LIST",
+        "seq": 21,
+        "payload": {
+          "dir": "/logs/",
+          "want_hashes": 0
+        }
+      },
+      "wire_in": "a503150800062f6c6f67732f006bc4",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 21,
+            "payload": {
+              "code": 4,
+              "code_name": "ERR_NO_SD",
+              "message": "no sd card"
+            }
+          },
+          "wire_out": "a5ef150d0004000a6e6f207364206361726463d0"
+        }
+      ],
+      "notes": "A first-class answer, not a timeout: Prime logs 'tables/logs skipped \u2014 no SD in Light' and moves on."
+    },
+    {
+      "id": "err-not-found",
+      "section": "\u00a74.ERROR",
+      "kind": "exchange",
+      "request": {
+        "type": "GET",
+        "seq": 22,
+        "payload": {
+          "path": "/logs/missing.log",
+          "offset": 0,
+          "max_len": 64
+        }
+      },
+      "wire_in": "a506161800112f6c6f67732f6d697373696e672e6c6f670000000040002ebb",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 22,
+            "payload": {
+              "code": 6,
+              "code_name": "ERR_NOT_FOUND",
+              "message": "not found"
+            }
+          },
+          "wire_out": "a5ef160c000600096e6f7420666f756e645fb0"
+        }
+      ]
+    },
+    {
+      "id": "err-io-put-gap",
+      "section": "\u00a74.PUT/\u00a74.ERROR",
+      "kind": "exchange",
+      "light_state": {
+        "staged": {
+          "/tables/nmea2000-std.json": 24
+        }
+      },
+      "request": {
+        "type": "PUT",
+        "seq": 23,
+        "payload": {
+          "path": "/tables/nmea2000-std.json",
+          "offset": 48,
+          "chunk_len": 12
+        }
+      },
+      "wire_in": "a504172c00192f7461626c65732f6e6d6561323030302d7374642e6a736f6e300000000c0067696e655261706964227d0a152f",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 23,
+            "payload": {
+              "code": 7,
+              "code_name": "ERR_IO",
+              "message": "io error"
+            }
+          },
+          "wire_out": "a5ef170b00070008696f206572726f72273e"
+        }
+      ],
+      "notes": "24 bytes staged, chunk arrives at offset 48: a gap. Chunks MUST be ascending and contiguous -> ERR_IO."
+    },
+    {
+      "id": "err-hash-mismatch-commit",
+      "section": "\u00a74.COMMIT/\u00a74.ERROR",
+      "kind": "exchange",
+      "light_state": {
+        "staged": {
+          "/tables/nmea2000-std.json": 36
+        }
+      },
+      "request": {
+        "type": "COMMIT",
+        "seq": 24,
+        "payload": {
+          "path": "/tables/nmea2000-std.json",
+          "sha256": "5755f2cd410a5608fa737936b97c2c1cb47bfc6c369b8dc27d0f51801ad6557d"
+        }
+      },
+      "wire_in": "a505183a00192f7461626c65732f6e6d6561323030302d7374642e6a736f6e5755f2cd410a5608fa737936b97c2c1cb47bfc6c369b8dc27d0f51801ad6557d17ed",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 24,
+            "payload": {
+              "code": 8,
+              "code_name": "ERR_HASH_MISMATCH",
+              "message": "hash mismatch"
+            }
+          },
+          "wire_out": "a5ef18100008000d68617368206d69736d61746368882d"
+        }
+      ],
+      "notes": "Staged bytes hash differently -> ERR_HASH_MISMATCH, staging file unlinked, destination never touched."
+    },
+    {
+      "id": "err-hash-mismatch-delete",
+      "section": "\u00a74.DELETE/\u00a74.ERROR",
+      "kind": "exchange",
+      "request": {
+        "type": "DELETE",
+        "seq": 25,
+        "payload": {
+          "path": "/logs/raw000.log",
+          "sha256": "e2247e2d0a18ae64dddde4817edc2667df1a8edc117b95edbe27cd640cd7d64f"
+        }
+      },
+      "wire_in": "a507193100102f6c6f67732f7261773030302e6c6f67e2247e2d0a18ae64dddde4817edc2667df1a8edc117b95edbe27cd640cd7d64f48b7",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 25,
+            "payload": {
+              "code": 8,
+              "code_name": "ERR_HASH_MISMATCH",
+              "message": "hash mismatch"
+            }
+          },
+          "wire_out": "a5ef19100008000d68617368206d69736d6174636897f3"
+        }
+      ],
+      "notes": "The scary step defended: digest mismatch leaves the file untouched. A delete that verifies nothing is data loss on a black box."
+    },
+    {
+      "id": "err-busy-active-log",
+      "section": "\u00a74.ERROR/\u00a76",
+      "kind": "exchange",
+      "light_state": {
+        "open_path": "/logs/raw002.log"
+      },
+      "request": {
+        "type": "GET",
+        "seq": 26,
+        "payload": {
+          "path": "/logs/raw002.log",
+          "offset": 0,
+          "max_len": 64
+        }
+      },
+      "wire_in": "a5061a1700102f6c6f67732f7261773030322e6c6f67000000004000a3a0",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 26,
+            "payload": {
+              "code": 9,
+              "code_name": "ERR_BUSY",
+              "message": "busy"
+            }
+          },
+          "wire_out": "a5ef1a070009000462757379f91e"
+        }
+      ],
+      "notes": "Defense in depth: \u00a76 closes the active log on the first framed request, so this is normally unreachable \u2014 but if a path is somehow held open, GET answers ERR_BUSY rather than fighting over the single FS handle."
+    },
+    {
+      "id": "err-unsupported-ver",
+      "section": "\u00a74.ERROR/\u00a78",
+      "kind": "exchange",
+      "light_state": {
+        "proto_version": 2
+      },
+      "request": {
+        "type": "LIST",
+        "seq": 27,
+        "payload": {
+          "dir": "/logs/",
+          "want_hashes": 0
+        }
+      },
+      "wire_in": "a5031b0800062f6c6f67732f001197",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 27,
+            "payload": {
+              "code": 10,
+              "code_name": "ERR_UNSUPPORTED_VER",
+              "message": "unsupported version"
+            }
+          },
+          "wire_out": "a5ef1b16000a0013756e737570706f727465642076657273696f6ea11c"
+        }
+      ],
+      "notes": "PINS: on a version mismatch, commands outside the every-version set (HELLO, SET_CLOCK, BYE) answer ERR_UNSUPPORTED_VER. A well-behaved Prime never sends them (it degrades per \u00a78); this is Light's backstop if it does.",
+      "pins_open_behavior": true
+    },
+    {
+      "id": "err-too-large-get",
+      "section": "\u00a74.ERROR/\u00a73",
+      "kind": "exchange",
+      "request": {
+        "type": "GET",
+        "seq": 28,
+        "payload": {
+          "path": "/logs/raw000.log",
+          "offset": 0,
+          "max_len": 2048
+        }
+      },
+      "wire_in": "a5061c1700102f6c6f67732f7261773030302e6c6f67000000000008f155",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 28,
+            "payload": {
+              "code": 11,
+              "code_name": "ERR_TOO_LARGE",
+              "message": "too large"
+            }
+          },
+          "wire_out": "a5ef1c0c000b0009746f6f206c6172676525c4"
+        }
+      ],
+      "notes": "max_len 2048 > advertised max_payload 1024. The frame itself is small and valid \u2014 the *requested chunk* is over max -> ERR_TOO_LARGE (ERR_BAD_FRAME is for frames that don't parse)."
+    },
+    {
+      "id": "reject-write-to-logs",
+      "section": "\u00a77",
+      "kind": "exchange",
+      "request": {
+        "type": "PUT",
+        "seq": 29,
+        "payload": {
+          "path": "/logs/evil.log",
+          "offset": 0,
+          "chunk_len": 4
+        }
+      },
+      "wire_in": "a5041d19000e2f6c6f67732f6576696c2e6c6f67000000000400585858586e10",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 29,
+            "payload": {
+              "code": 5,
+              "code_name": "ERR_PATH_REJECTED",
+              "message": "path rejected"
+            }
+          },
+          "wire_out": "a5ef1d100005000d706174682072656a6563746564bcd6"
+        }
+      ],
+      "notes": "The black box is append-only from the outside: any write under /logs/ is rejected and logged on Light. Every rejection is logged on Light."
+    },
+    {
+      "id": "reject-tier2-read",
+      "section": "\u00a77",
+      "kind": "exchange",
+      "request": {
+        "type": "GET",
+        "seq": 30,
+        "payload": {
+          "path": "/config/user.json",
+          "offset": 0,
+          "max_len": 64
+        }
+      },
+      "wire_in": "a5061e1800112f636f6e6669672f757365722e6a736f6e0000000040001498",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 30,
+            "payload": {
+              "code": 5,
+              "code_name": "ERR_PATH_REJECTED",
+              "message": "path rejected"
+            }
+          },
+          "wire_out": "a5ef1e100005000d706174682072656a6563746564bca4"
+        }
+      ],
+      "notes": "Tier-2 config is the user's on-device choices \u2014 none of Prime's business. Every rejection is logged on Light."
+    },
+    {
+      "id": "reject-list-outside-roots",
+      "section": "\u00a77",
+      "kind": "exchange",
+      "request": {
+        "type": "LIST",
+        "seq": 31,
+        "payload": {
+          "dir": "/config/",
+          "want_hashes": 0
+        }
+      },
+      "wire_in": "a5031f0a00082f636f6e6669672f00d44e",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 31,
+            "payload": {
+              "code": 5,
+              "code_name": "ERR_PATH_REJECTED",
+              "message": "path rejected"
+            }
+          },
+          "wire_out": "a5ef1f100005000d706174682072656a6563746564a37a"
+        }
+      ],
+      "notes": "LIST accepts /logs/ or /tables/ only. Every rejection is logged on Light."
+    },
+    {
+      "id": "reject-dotdot",
+      "section": "\u00a77",
+      "kind": "exchange",
+      "request": {
+        "type": "PUT",
+        "seq": 32,
+        "payload": {
+          "path": "/tables/../config/user.json",
+          "offset": 0,
+          "chunk_len": 4
+        }
+      },
+      "wire_in": "a5042026001b2f7461626c65732f2e2e2f636f6e6669672f757365722e6a736f6e00000000040058585858f8db",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 32,
+            "payload": {
+              "code": 5,
+              "code_name": "ERR_PATH_REJECTED",
+              "message": "path rejected"
+            }
+          },
+          "wire_out": "a5ef20100005000d706174682072656a65637465646580"
+        }
+      ],
+      "notes": "Any path containing '..' is rejected before normalization is even attempted. Every rejection is logged on Light."
+    },
+    {
+      "id": "reject-backslash",
+      "section": "\u00a77",
+      "kind": "exchange",
+      "request": {
+        "type": "GET",
+        "seq": 33,
+        "payload": {
+          "path": "/logs\\raw000.log",
+          "offset": 0,
+          "max_len": 64
+        }
+      },
+      "wire_in": "a506211700102f6c6f67735c7261773030302e6c6f67000000004000f015",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 33,
+            "payload": {
+              "code": 5,
+              "code_name": "ERR_PATH_REJECTED",
+              "message": "path rejected"
+            }
+          },
+          "wire_out": "a5ef21100005000d706174682072656a65637465647a5e"
+        }
+      ],
+      "notes": "Backslash anywhere in a path is rejected. Every rejection is logged on Light."
+    },
+    {
+      "id": "reject-embedded-nul",
+      "section": "\u00a77",
+      "kind": "exchange",
+      "request": {
+        "type": "GET",
+        "seq": 34,
+        "payload": {
+          "path_hex": "2f6c6f67732f726177002e6c6f67",
+          "offset": 0,
+          "max_len": 64
+        }
+      },
+      "wire_in": "a5062215000e2f6c6f67732f726177002e6c6f67000000004000cfc1",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 34,
+            "payload": {
+              "code": 5,
+              "code_name": "ERR_PATH_REJECTED",
+              "message": "path rejected"
+            }
+          },
+          "wire_out": "a5ef22100005000d706174682072656a65637465647a2c"
+        }
+      ],
+      "notes": "Strings are length-prefixed, so a NUL is expressible on the wire \u2014 and rejected, because it will desynchronize any C string handling downstream. Every rejection is logged on Light."
+    },
+    {
+      "id": "reject-relative-path",
+      "section": "\u00a77",
+      "kind": "exchange",
+      "request": {
+        "type": "PUT",
+        "seq": 35,
+        "payload": {
+          "path": "tables/x.json",
+          "offset": 0,
+          "chunk_len": 4
+        }
+      },
+      "wire_in": "a5042318000d7461626c65732f782e6a736f6e00000000040058585858b523",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 35,
+            "payload": {
+              "code": 5,
+              "code_name": "ERR_PATH_REJECTED",
+              "message": "path rejected"
+            }
+          },
+          "wire_out": "a5ef23100005000d706174682072656a656374656465f2"
+        }
+      ],
+      "notes": "Paths are absolute and /-rooted; anything else is rejected. Every rejection is logged on Light."
+    },
+    {
+      "id": "reject-delete-outside-logs",
+      "section": "\u00a77",
+      "kind": "exchange",
+      "request": {
+        "type": "DELETE",
+        "seq": 36,
+        "payload": {
+          "path": "/tables/nmea2000-std.json",
+          "sha256": "7aac5a0b0e0c4d2732ce21fd6100f5205bcf21339df79f00fbd695855f71d41a"
+        }
+      },
+      "wire_in": "a507243a00192f7461626c65732f6e6d6561323030302d7374642e6a736f6e7aac5a0b0e0c4d2732ce21fd6100f5205bcf21339df79f00fbd695855f71d41ab3d3",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 36,
+            "payload": {
+              "code": 5,
+              "code_name": "ERR_PATH_REJECTED",
+              "message": "path rejected"
+            }
+          },
+          "wire_out": "a5ef24100005000d706174682072656a65637465647ac8"
+        }
+      ],
+      "notes": "DELETE is /logs/ only \u2014 tables are overwritten by PUT/COMMIT, never deleted, and config is untouchable. Every rejection is logged on Light."
+    },
+    {
+      "id": "set-clock-unsynced-nonzero",
+      "section": "\u00a74.SET_CLOCK",
+      "kind": "exchange",
+      "request": {
+        "type": "SET_CLOCK",
+        "seq": 37,
+        "payload": {
+          "epoch": 1767225600,
+          "quality": 0,
+          "quality_name": "unsynced"
+        }
+      },
+      "wire_in": "a50225090000b95569000000000092de",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 37,
+            "payload": {
+              "code": 2,
+              "code_name": "ERR_BAD_FRAME",
+              "message": "bad frame"
+            }
+          },
+          "wire_out": "a5ef250c00020009626164206672616d65ba69"
+        }
+      ],
+      "notes": "PINS: \u00a74 says Prime MUST NOT send quality=unsynced with a nonzero epoch; this vector makes Light enforce it (ERR_BAD_FRAME, clock unchanged) rather than trust Prime's discipline. A bad clock is labeled, never laundered.",
+      "pins_open_behavior": true
+    },
+    {
+      "id": "commit-nothing-staged",
+      "section": "\u00a74.COMMIT",
+      "kind": "exchange",
+      "request": {
+        "type": "COMMIT",
+        "seq": 38,
+        "payload": {
+          "path": "/tables/ghost.json",
+          "sha256": "ead6ef03d61ee60c533d6d450c50a1e559a8a37f6b796a4094cd0dac6b744428"
+        }
+      },
+      "wire_in": "a505263300122f7461626c65732f67686f73742e6a736f6eead6ef03d61ee60c533d6d450c50a1e559a8a37f6b796a4094cd0dac6b744428f1ba",
+      "expect": [
+        {
+          "frame": {
+            "type": "ERROR",
+            "seq": 38,
+            "payload": {
+              "code": 6,
+              "code_name": "ERR_NOT_FOUND",
+              "message": "not found"
+            }
+          },
+          "wire_out": "a5ef260c000600096e6f7420666f756e64c163"
+        }
+      ],
+      "notes": "PINS: COMMIT with no staging file for that path is ERR_NOT_FOUND. Prime hits this when a redock retries a COMMIT whose PUTs never ran.",
+      "pins_open_behavior": true
+    },
+    {
+      "id": "resync-garbage-before-sof",
+      "section": "\u00a72",
+      "kind": "exchange",
+      "request": {
+        "type": "HELLO",
+        "seq": 39,
+        "payload": {},
+        "preceded_by_ascii": "SMOKE Scottina Light v1-foundation\\r\\n"
+      },
+      "wire_in": "534d4f4b452053636f7474696e61204c696768742076312d666f756e646174696f6e0d0aa50127000022f1",
+      "expect": [
+        {
+          "frame": {
+            "type": "HELLO",
+            "seq": 39,
+            "payload": {
+              "proto_version": 1,
+              "product": "Scottina Light",
+              "fw_version": "v1-foundation",
+              "sd_present": 1,
+              "clock_epoch": 0,
+              "clock_quality": 0,
+              "clock_set_this_boot": 0,
+              "max_payload": 1024,
+              "flags": 3
+            }
+          },
+          "wire_out": "a501272d0001000e53636f7474696e61204c696768740d76312d666f756e646174696f6e010000000000000000000000040376de"
+        }
+      ],
+      "notes": "Light's ASCII boot output (all bytes < 0x80) precedes the first frame. Scanner skips to SOF; exactly one HELLO response, no ERROR frames for the garbage."
+    },
+    {
+      "id": "resync-testhook-alphabet",
+      "section": "\u00a72",
+      "kind": "exchange",
+      "request": {
+        "type": "HELLO",
+        "seq": 40,
+        "payload": {},
+        "preceded_by_ascii": "abcudlrp",
+        "followed_by_ascii": "a"
+      },
+      "wire_in": "61626375646c7270a50128000013dd61",
+      "expect": [
+        {
+          "frame": {
+            "type": "HELLO",
+            "seq": 40,
+            "payload": {
+              "proto_version": 1,
+              "product": "Scottina Light",
+              "fw_version": "v1-foundation",
+              "sd_present": 1,
+              "clock_epoch": 0,
+              "clock_quality": 0,
+              "clock_set_this_boot": 0,
+              "max_payload": 1024,
+              "flags": 3
+            }
+          },
+          "wire_out": "a501282d0001000e53636f7474696e61204c696768740d76312d666f756e646174696f6e01000000000000000000000004037c4d"
+        }
+      ],
+      "notes": "The SL_TEST_HOOK alphabet (a b c u d l r p) arrives around a frame \u2014 on a dev build these are button presses, and none can be 0xA5. The frame is answered; the stray trailing 'a' is ignored by the framed parser (what the test hook does with it is out of scope)."
+    },
+    {
+      "id": "resync-false-sof-huge-len",
+      "section": "\u00a72",
+      "kind": "exchange",
+      "request": {
+        "type": "HELLO",
+        "seq": 41,
+        "payload": {},
+        "preceded_by_hex": "a5ff00ffff"
+      },
+      "wire_in": "a5ff00ffffa50129000023ea",
+      "expect": [
+        {
+          "frame": {
+            "type": "HELLO",
+            "seq": 41,
+            "payload": {
+              "proto_version": 1,
+              "product": "Scottina Light",
+              "fw_version": "v1-foundation",
+              "sd_present": 1,
+              "clock_epoch": 0,
+              "clock_quality": 0,
+              "clock_set_this_boot": 0,
+              "max_payload": 1024,
+              "flags": 3
+            }
+          },
+          "wire_out": "a501292d0001000e53636f7474696e61204c696768740d76312d666f756e646174696f6e01000000000000000000000004039da7"
+        }
+      ],
+      "notes": "PINS: a false SOF whose LEN (0xFFFF) exceeds max_payload gets the \u00a72 treatment \u2014 discard one byte, rescan, and send NOTHING: the header never passed CRC, so its SEQ cannot be echoed and no ERROR is emitted. Never allocate or block on an unvalidated LEN. The real frame that follows is answered normally.",
+      "pins_open_behavior": true
+    },
+    {
+      "id": "payload-contains-sof",
+      "section": "\u00a72",
+      "kind": "exchange",
+      "request": {
+        "type": "PUT",
+        "seq": 42,
+        "payload": {
+          "path": "/tables/blob.bin",
+          "offset": 0,
+          "chunk_len": 16,
+          "chunk_hex": "a5a500a55aa5ffa50102a503a5a504a5"
+        }
+      },
+      "wire_in": "a5042a2700102f7461626c65732f626c6f622e62696e000000001000a5a500a55aa5ffa50102a503a5a504a5ce4f",
+      "expect": [
+        {
+          "frame": {
+            "type": "PUT",
+            "seq": 42,
+            "payload": {
+              "ok": 1,
+              "total_bytes_staged": 16
+            }
+          },
+          "wire_out": "a5042a05000110000000d8a6"
+        }
+      ],
+      "notes": "Ten of the sixteen chunk bytes are 0xA5. A correct reader is length-driven after SOF lock and never rescans payload bytes."
+    },
+    {
+      "id": "truncated-frame-then-silence",
+      "section": "\u00a72/\u00a75",
+      "kind": "exchange",
+      "request": {
+        "type": "HELLO",
+        "seq": 43,
+        "payload": {},
+        "truncation": "first 5 of 7 bytes; CRC never arrives"
+      },
+      "wire_in": "a5012b0000",
+      "expect": [],
+      "notes": "No response \u2014 Light is still waiting for the CRC. Prime's 2 s per-request timeout is the recovery, and Light's 10 s dock watchdog performs the implicit BYE (\u00a75). expect=[] means 'assert timeout', not 'assert nothing forever'."
+    },
+    {
+      "id": "seq-echo-back-to-back",
+      "section": "\u00a72/\u00a71",
+      "kind": "exchange",
+      "request": {
+        "note": "two HELLO requests, seq 44 then 45"
+      },
+      "wire_in": "a5012c0000d301a5012d0000e336",
+      "expect": [
+        {
+          "frame": {
+            "type": "HELLO",
+            "seq": 44,
+            "payload": {
+              "proto_version": 1,
+              "product": "Scottina Light",
+              "fw_version": "v1-foundation",
+              "sd_present": 1,
+              "clock_epoch": 0,
+              "clock_quality": 0,
+              "clock_set_this_boot": 0,
+              "max_payload": 1024,
+              "flags": 3
+            }
+          },
+          "wire_out": "a5012c2d0001000e53636f7474696e61204c696768740d76312d666f756e646174696f6e01000000000000000000000004039bd6"
+        },
+        {
+          "frame": {
+            "type": "HELLO",
+            "seq": 45,
+            "payload": {
+              "proto_version": 1,
+              "product": "Scottina Light",
+              "fw_version": "v1-foundation",
+              "sd_present": 1,
+              "clock_epoch": 0,
+              "clock_quality": 0,
+              "clock_set_this_boot": 0,
+              "max_payload": 1024,
+              "flags": 3
+            }
+          },
+          "wire_out": "a5012d2d0001000e53636f7474696e61204c696768740d76312d666f756e646174696f6e01000000000000000000000004037a3c"
+        }
+      ],
+      "notes": "Strictly sequential per \u00a71 \u2014 Prime never actually pipelines, but bytes can land back-to-back in one read. Each response echoes its request's SEQ, in order."
+    }
+  ]
+}
