@@ -62,9 +62,11 @@ ERRORS = {0x0001: "ERR_BAD_CRC", 0x0002: "ERR_BAD_FRAME",
           0x000A: "ERR_UNSUPPORTED_VER", 0x000B: "ERR_TOO_LARGE"}
 ERROR_CODES = {v: k for k, v in ERRORS.items()}
 
-# §5 — Prime puts a timeout on EVERY request.
+# §5 — Prime puts a timeout on EVERY request. DELETE is 60 s (ratified
+# amendment): the redock resume path deletes without a cached digest, so
+# Light may rehash a multi-MB file from a cold card.
 TIMEOUT_DEFAULT = 2.0
-TIMEOUTS = {"COMMIT": 30.0, "DELETE": 30.0}     # both may hash a multi-MB file
+TIMEOUTS = {"COMMIT": 30.0, "DELETE": 60.0}
 
 CLOCK_QUALITY_NAMES = {0: "unsynced", 1: "rtc", 2: "ntp"}
 # System time earlier than this cannot be real (Pi 5 RTC with no coin cell
