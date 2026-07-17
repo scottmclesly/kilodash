@@ -104,10 +104,32 @@ class MeshLink:
             except Exception:
                 pass
 
+    def _advertising(self, timeout=10):
+        """True if the node is currently advertising. A Meshtastic node with
+        its single BLE slot taken (e.g. a phone connected to it) does NOT
+        advertise — and a GATT connect attempted in that state hangs forever
+        rather than failing (bench fact, 2026-07-16), wedging this thread
+        inside a dead attempt. So: never connect blind; scans time out."""
+        if not self.ble_address:
+            return True                # scan-any mode: let connect discover
+        try:
+            import asyncio
+            from bleak import BleakScanner
+
+            async def scan():
+                return await BleakScanner.find_device_by_address(
+                    self.ble_address, timeout=timeout)
+            return asyncio.run(scan()) is not None
+        except Exception:               # noqa: BLE001 — treat as not seen
+            return False
+
     def _loop(self):
         backoff = RECONNECT_MIN_S
         while not self._stop.is_set():
             try:
+                if not self._advertising():
+                    raise ConnectionError("node not advertising "
+                                          "(slot busy or out of range)")
                 self._set_state("connecting", self.ble_address or "scan")
                 self._connect()
                 backoff = RECONNECT_MIN_S

@@ -40,10 +40,14 @@ Expected node IDs (fill in at bench bring-up; the ScotCmd column feeds
 
 | Node | Node ID | On ScotCmd? |
 |---|---|---|
-| Prime radio | `!________` | yes (the executor's own radio) |
+| Prime radio | `!ea244ad4` (BLE `E8:6B:EA:24:4A:D6`, TLORA_V2_1_1P6, fw 2.7.26) | yes (the executor's own radio) |
 | Sensor node | `!________` | no |
 | Light companion | `!________` | no |
 | Phone | `!________` | yes → allowed_nodes |
+
+Prime radio public key (2026-07-16, feeds the sensor node's
+`security.admin_key` for over-the-air admin):
+`C+JFlde3fGzpUUMgVGRsDgbsraZwbmcG+BG3FsOfr2s=`
 
 ## Node roster + names
 
