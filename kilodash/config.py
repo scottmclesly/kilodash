@@ -9,6 +9,8 @@ import copy
 import json
 import os
 
+import microkvm
+
 from . import cantick
 
 CONFIG_PATH = os.environ.get("KILODASH_CONFIG", "/opt/kilodash/config.json")
@@ -65,6 +67,11 @@ DEFAULTS = {
     "lightdock_pull_logs": {"value": True, "type": "bool",
                             "label": "Light Dock: auto-pull logs",
                             "group": "System"},
+    # Micro KVM off-grid command plane (MICROKVM-PROTOCOL.md). Hand-edited
+    # over SSH for now; not secret-bearing — the command-channel PSK lives in
+    # the Meshtastic node (docs/LORAMESH.md), never here.
+    "microkvm": {"value": dict(microkvm.CONFIG_DEFAULTS), "type": "hidden",
+                 "label": "Micro KVM command plane", "group": "System"},
 }
 
 

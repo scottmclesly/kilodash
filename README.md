@@ -159,6 +159,7 @@ plugged in** (hotplug, see `devices.py`) and carry a small green "live" badge.
 | **Pi Health** | Temperature, CPU, memory, disk, uptime, Wi-Fi signal, throttling — each a labelled bar or value card. User guide: [docs/SYSTEM.md](docs/SYSTEM.md#pi-health). |
 | **Pomodoro** | Focus/break timer that **keeps counting on a background thread** even when you're on another screen, and toasts each transition app-wide. User guide: [docs/SYSTEM.md](docs/SYSTEM.md#pomodoro). |
 | **Settings** | Every tunable as a card (booleans toggle, ints step, choices cycle), plus power actions (Restart UI / reboot / shutdown) and a touch-calibration helper. User guide: [docs/SYSTEM.md](docs/SYSTEM.md#settings). |
+| **Micro KVM** | Meshtastic/BLE T3 — **off-grid command plane (armed off-network only)**. Across-the-room **ARMED (off-grid)** / **DORMANT (home)** banner, BLE link state, last-heard node, and the bounded session log (command, sender, accept/reject reason, reply). The tile is a mirror only — executor, arm gate and BLE link live in `microkvm/`. Contract: [MICROKVM-PROTOCOL.md](To-DoLists/MICROKVM-PROTOCOL.md); guide: [docs/MICROKVM.md](docs/MICROKVM.md); install with [`setup/install-microkvm.sh`](setup/install-microkvm.sh). |
 
 **Hotplug device screens (tile shows only while the device is present):**
 
@@ -201,6 +202,23 @@ credentials (primary slot), a generated fallback-AP credential pair
 (fallback slot), the bus bitrate and the listen-only flag over the CDC serial
 port, then verifies with `GET_STATUS`. PSKs are never logged. Unplug; on next
 boot the CanTick joins the network and dials in.
+
+### Micro KVM — off-grid command plane (scope)
+
+When Prime is out of SSH/web reach, a paired Meshtastic node (your phone's
+canned messages) can query it and drive a small set of diagnostic actions
+over LoRa — one text frame in, one terse reply back. No video, no shell, no
+interactive I/O. Scope, stated plainly: **this plane executes only an
+allow-listed verb set** (`microkvm/registry.py`, mirrored in
+[MICROKVM-PROTOCOL.md](To-DoLists/MICROKVM-PROTOCOL.md)), **has no shell** —
+every subprocess is a fixed `list[str]` argv with domain-enumerated tokens,
+re-checked by an independent reject pass (the `scan.py` pattern) — **and is
+inert on-network**: the executor arms only when the configured home
+gateway is unreachable (debounced), so holding the channel PSK at the bench
+commands nothing. The command channel PSK is the crypto boundary; a
+sender-node-ID allow-list narrows within it. Radio side: BLE to the Prime
+radio T3, never Prime's WiFi (that stays free for the web app). Mesh
+provisioning: [docs/LORAMESH.md](docs/LORAMESH.md).
 
 **AP fallback:** if the Pi has *no uplink at all* when the CAN screen opens
 (off-grid diagnostics), it raises a WPA2 AP `Scottina-CanTick` on `wlan0`
@@ -298,8 +316,10 @@ kilodash/
   theme.py              palettes + font cache
   config.py             settings schema + JSON persistence
   screens/              one file per screen
+microkvm/               off-grid command plane: verb registry, executor, arm gate, BLE link
 legacy/                 the fbdash.py / kilo_dash.py prototypes this grew from
 setup/                  web-app installer, systemd units, Node-RED flow + guide
+tools/                  bench instruments: CanTick provisioning, Meshtastic node provisioning
 ```
 
 Adding a screen: subclass `screens.base.Screen`, implement `draw_content` and

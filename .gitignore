@@ -7,6 +7,9 @@ config.json
 *.bak
 *.tmp
 
+# Mesh channel PSKs (tools/provision_mesh.sh) — per-boat secrets
+mesh-secrets.env
+
 # Generated captures, logs and sniffs — keep the folder, ignore its contents
 captures/*
 !captures/.gitkeep

@@ -231,6 +231,23 @@ def _lightdock(d, cx, cy, r, c):
     _dot(d, cx + r * 0.05, cy, r * 0.14, c)     # the pulse on the wire
 
 
+def _microkvm(d, cx, cy, r, c):
+    """Off-grid command plane: radio mast with a command chevron beside it."""
+    lw = _lw(r)
+    # mast + ground
+    d.line((cx - r * 0.45, cy + r, cx - r * 0.45, cy - r * 0.55), fill=c, width=lw)
+    _dot(d, cx - r * 0.45, cy - r * 0.62, r * 0.14, c)
+    # two radiating arcs off the mast tip
+    for k in (0.45, 0.8):
+        d.arc((cx - r * 0.45 - r * k, cy - r * 0.62 - r * k,
+               cx - r * 0.45 + r * k, cy - r * 0.62 + r * k),
+              start=-45, end=45, fill=c, width=lw)
+    # command chevron + return dash (one frame in, one reply back)
+    d.line((cx + r * 0.15, cy + r * 0.05, cx + r * 0.5, cy + r * 0.4), fill=c, width=lw)
+    d.line((cx + r * 0.5, cy + r * 0.4, cx + r * 0.15, cy + r * 0.75), fill=c, width=lw)
+    d.line((cx + r * 0.6, cy + r * 0.75, cx + r * 0.95, cy + r * 0.75), fill=c, width=lw)
+
+
 def _settings(d, cx, cy, r, c):
     """Maintenance: ring with radial adjustment ticks."""
     lw = _lw(r)
@@ -258,6 +275,7 @@ _GLYPHS = {
     "signalk": _signalk,
     "pomodoro": _pomodoro,
     "health": _health,
+    "microkvm": _microkvm,
     "settings": _settings,
 }
 

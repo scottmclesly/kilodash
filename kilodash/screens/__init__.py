@@ -22,6 +22,7 @@ from .aiscatcher import AisCatcherScreen
 from .signalk import SignalKScreen
 from .pomodoro import PomodoroScreen
 from .health import HealthScreen
+from .microkvm import MicroKvmScreen
 from .settings import SettingsScreen
 
 SCREENS = [
@@ -44,5 +45,6 @@ SCREENS = [
     SignalKScreen,       # web app: signal-k (tile shows if signalk.service present)
     PomodoroScreen,      # focus timer; keeps running in the background
     HealthScreen,
+    MicroKvmScreen,      # off-grid command plane mirror (MICROKVM-PROTOCOL.md)
     SettingsScreen,
 ]

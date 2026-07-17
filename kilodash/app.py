@@ -98,6 +98,19 @@ class App:
         self._flash = None              # (start, until, period) full-screen attention flash
         self.backlight = self._find_backlight()
 
+        # Micro KVM off-grid command plane (MICROKVM-PROTOCOL.md). The BLE/
+        # arm-gate threads live in microkvm/; the app only serves two seams:
+        # the active-tile name for the status verb, and the tile-switch
+        # request the main loop applies on the UI thread (never from BLE).
+        self.microkvm = None
+        try:
+            from microkvm.service import Runtime, tile_slug
+            self.microkvm = Runtime(self.config["microkvm"],
+                                    screens=self.screens).start()
+            self.microkvm.wire_ui(lambda: tile_slug(self.current.title))
+        except Exception as e:          # noqa: BLE001 — plane is optional
+            print(f"microkvm: not started: {e}", file=sys.stderr)
+
         self.current.on_enter()
 
     # ------------------------------------------------------------ dirty state
@@ -500,6 +513,13 @@ class App:
 
             self._read_keyboard_quit()
             self._update_dim()
+
+            # Micro KVM `tile` verb: apply a pending switch on the UI thread
+            if self.microkvm:
+                scr = self.microkvm.take_tile_request()
+                if scr:
+                    self._wake()
+                    self.open_screen(scr)
 
             # hotplug: if the device behind the current screen was unplugged,
             # bail back to Home so we don't sit on a dead screen.
