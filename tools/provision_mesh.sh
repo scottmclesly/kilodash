@@ -8,15 +8,23 @@
 # so every node matches by construction — a region or preset mismatch is a
 # silent no-mesh and the #1 bring-up failure.
 #
-#   tools/provision_mesh.sh prime     [--port /dev/ttyACM0]
-#   tools/provision_mesh.sh sensor    [--port ...] [--admin-key <base64>]
-#   tools/provision_mesh.sh companion [--port ...]
-#   tools/provision_mesh.sh qr        [--port ...]   # join-QR for the phone
-#   tools/provision_mesh.sh verify    [--port ...]   # read back --info
+#   tools/provision_mesh.sh prime     [--port /dev/ttyACM0 | --ble AA:BB:..]
+#   tools/provision_mesh.sh sensor    [--port ... | --ble ...] [--admin-key <base64>]
+#   tools/provision_mesh.sh companion [--port ... | --ble ...]
+#   tools/provision_mesh.sh qr        [--port ... | --ble ...]  # join-QR for the phone
+#   tools/provision_mesh.sh verify    [--port ... | --ble ...]  # read back --info
 #
 # PSKs: generated once into /opt/kilodash/mesh-secrets.env (git-ignored,
 # per-boat, mode 600). The ScotCmd PSK is the command plane's auth boundary
 # (MICROKVM-PROTOCOL.md §6) — it never goes to sensor/companion nodes.
+#
+# BLE mode (bench facts, 2026-07-16, T3 #1 bring-up): pair + trust in
+# bluetoothctl FIRST (random PIN shows on the node's OLED the moment pairing
+# starts — ~30 s window). The CLI over BLE hangs on exit AND HOLDS the node's
+# single BLE connection, so every call here is capped, killed, and explicitly
+# disconnected; success is judged by the radio's "Writing modified..." output,
+# never the exit code. Stop kilodash first if it owns the link
+# (systemctl stop kilodash), and restart it after.
 #
 set -euo pipefail
 
@@ -63,28 +71,57 @@ ensure_secrets() {
 # --------------------------------------------------------------------- args --
 ROLE="${1:-}"; shift || true
 PORT=""
+BLE=""
 ADMIN_KEY=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --port)      PORT="$2"; shift 2 ;;
+    --ble)       BLE="$2"; shift 2 ;;
     --admin-key) ADMIN_KEY="$2"; shift 2 ;;
     *) die "unknown arg: $1" ;;
   esac
 done
 
-find_port() {
+find_conn() {
+  [ -n "$BLE" ] && return
   [ -n "$PORT" ] && return
   local cands=(/dev/ttyACM* /dev/ttyUSB*)
   local real=()
   for p in "${cands[@]}"; do [ -e "$p" ] && real+=("$p"); done
-  [ ${#real[@]} -eq 1 ] || die "need exactly one node on USB (found ${#real[@]}); use --port"
+  [ ${#real[@]} -eq 1 ] \
+    || die "need exactly one node on USB (found ${#real[@]}); use --port or --ble"
   PORT="${real[0]}"
 }
 
+_ble_cleanup() {
+  pkill -f "$(basename "$MESHTASTIC")" 2>/dev/null || true
+  sleep 1
+  bluetoothctl disconnect "$BLE" >/dev/null 2>&1 || true
+  sleep 4
+}
+
 m() {
-  echo "  -> meshtastic --port $PORT $*"
-  "$MESHTASTIC" --port "$PORT" "$@"
-  sleep 2      # the node may commit/reboot between writes
+  if [ -z "$BLE" ]; then
+    echo "  -> $(basename "$MESHTASTIC") --port $PORT $*"
+    "$MESHTASTIC" --port "$PORT" "$@"
+    sleep 2      # the node may commit/reboot between writes
+    return
+  fi
+  # BLE path: capped, killed, disconnected; output-judged; 3 attempts.
+  local out="${TMPDIR:-/tmp}/mesh-step.$$"
+  for att in 1 2 3; do
+    echo "  -> (ble $BLE, attempt $att) $*"
+    timeout 90 "$MESHTASTIC" --ble "$BLE" "$@" >"$out" 2>&1 || true
+    _ble_cleanup
+    if grep -qE "Writing modified|Set |Complete URL|Owner|myNodeNum" "$out"; then
+      grep -E "Writing modified|Set |Owner" "$out" | head -6 || true
+      rm -f "$out"; return 0
+    fi
+    echo "     (no success marker — radio busy/asleep? retrying)"
+    tail -2 "$out"; sleep 10
+  done
+  rm -f "$out"
+  die "radio never confirmed the write over BLE (is kilodash holding the link? systemctl stop kilodash)"
 }
 
 # ---------------------------------------------------------------- the roles --
@@ -120,6 +157,8 @@ role_sensor() {
   say "Environment telemetry (auto-detects supported I2C sensors at boot)"
   m --set telemetry.environment_measurement_enabled true \
     --set telemetry.environment_update_interval "$TELEMETRY_INTERVAL"
+  # default to the Prime radio's recorded pubkey (mesh-secrets.env)
+  ADMIN_KEY="${ADMIN_KEY:-${PRIME_PUBKEY:-}}"
   if [ -n "$ADMIN_KEY" ]; then
     say "Remote admin: Prime radio's public key -> security.admin_key"
     m --set security.admin_key "base64:${ADMIN_KEY#base64:}"
@@ -139,28 +178,40 @@ role_companion() {
     --set serial.rxd "$SERIAL_RXD" --set serial.txd "$SERIAL_TXD"
 }
 
+# full-output runner for read-back commands (verify / qr)
+m_show() {
+  if [ -z "$BLE" ]; then
+    "$MESHTASTIC" --port "$PORT" "$@"
+    return
+  fi
+  local out="${TMPDIR:-/tmp}/mesh-show.$$"
+  timeout 90 "$MESHTASTIC" --ble "$BLE" "$@" >"$out" 2>&1 || true
+  _ble_cleanup
+  cat "$out"; rm -f "$out"
+}
+
 case "$ROLE" in
   prime|sensor|companion)
-    ensure_secrets; find_port
+    ensure_secrets; find_conn
     "role_$ROLE"
     say "Verify"
-    "$MESHTASTIC" --port "$PORT" --info | sed -n '1,40p'
+    m_show --info | sed -n '1,40p'
     echo
     echo "Check: region $REGION, preset $PRESET, channels as expected."
     echo "Record this node's ID (!hex) in docs/LORAMESH.md's table."
     ;;
   qr)
-    find_port
+    find_conn
     say "Join QR/URLs (scan with the Meshtastic app; run against the Prime"
     say "radio so the phone gets BOTH channels — it is the commander)"
-    "$MESHTASTIC" --port "$PORT" --qr-all
+    m_show --qr-all
     ;;
   verify)
-    find_port
-    "$MESHTASTIC" --port "$PORT" --info
+    find_conn
+    m_show --info
     ;;
   *)
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
     ;;
 esac

@@ -17,6 +17,7 @@ a pure function (`filter_frame`) so it is unit-testable without one either.
 """
 
 import logging
+import subprocess
 import threading
 import time
 
@@ -24,6 +25,7 @@ log = logging.getLogger("microkvm.link")
 
 RECONNECT_MIN_S = 5          # backoff floor after a BLE drop
 RECONNECT_MAX_S = 120        # ...and ceiling (duty discipline: no storms)
+LIVENESS_S = 15              # poll the kernel's view of the connection
 TEXT_PORTNUM = "TEXT_MESSAGE_APP"
 
 
@@ -97,12 +99,22 @@ class MeshLink:
         self.on_change()
 
     def _close(self):
+        """Dispose of the interface WITHOUT waiting: BLEInterface.close()
+        hangs when the connection died underneath it (same library bug that
+        makes the CLI never exit — bench fact 2026-07-16). A hung close on
+        a throwaway daemon thread costs a parked thread; a hung close on
+        the link thread costs the whole command plane."""
         iface, self._iface = self._iface, None
         if iface:
-            try:
-                iface.close()
-            except Exception:
-                pass
+            threading.Thread(target=self._close_iface, args=(iface,),
+                             daemon=True, name="microkvm-ble-close").start()
+
+    @staticmethod
+    def _close_iface(iface):
+        try:
+            iface.close()
+        except Exception:                # noqa: BLE001
+            pass
 
     def _advertising(self, timeout=10):
         """True if the node is currently advertising. A Meshtastic node with
@@ -165,13 +177,34 @@ class MeshLink:
             self._command_index = self._find_channel_index()
             self._set_state("up", f"ch[{self._command_index}]="
                                   f"{self.channel_name}")
+            # The connection.lost pubsub does NOT fire when the link is
+            # stolen (another client grabbing the node's single BLE slot,
+            # bench fact 2026-07-16) — so don't trust the callback alone:
+            # poll BlueZ's view of the connection as ground truth.
+            last_probe = time.monotonic()
             while not self._stop.is_set() and not disconnected.is_set():
                 time.sleep(0.5)
+                if time.monotonic() - last_probe >= LIVENESS_S:
+                    last_probe = time.monotonic()
+                    if not self._ble_connected():
+                        raise ConnectionError("BLE link lost (liveness probe)")
             if disconnected.is_set():
                 raise ConnectionError("BLE link lost")
         finally:
             pub.unsubscribe(on_receive, "meshtastic.receive.text")
             pub.unsubscribe(on_disconnect, "meshtastic.connection.lost")
+
+    def _ble_connected(self):
+        """BlueZ's ground truth on the connection; errs on 'alive' so a
+        broken probe can never kill a healthy link."""
+        if not self.ble_address:
+            return True
+        try:
+            r = subprocess.run(["bluetoothctl", "info", self.ble_address],
+                               capture_output=True, text=True, timeout=8)
+            return "Connected: yes" in r.stdout
+        except Exception:               # noqa: BLE001
+            return True
 
     def _find_channel_index(self):
         """Index of the command channel on the connected node. A node without
