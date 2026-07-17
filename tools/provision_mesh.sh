@@ -32,7 +32,7 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SECRETS="$REPO_DIR/mesh-secrets.env"
 
 # ---- the pinned radio config (docs/LORAMESH.md — change it THERE first) ----
-REGION="US"
+REGION="EU_433"   # 433 MHz T3 variants — Meshtastic's 433 band plan
 PRESET="LONG_SLOW"
 TEL_NAME="ScotTel"          # slot 0 (primary): telemetry + pager
 CMD_NAME="ScotCmd"          # slot 1: command plane (prime + phone ONLY)

@@ -30,6 +30,14 @@ class MicroKvmScreen(Screen):
     def rt(self):
         return getattr(self.app, "microkvm", None)
 
+    def available(self):
+        """Launcher philosophy: only offer tiles Scottina can work with.
+        The gate is CONFIGURED (microkvm.enabled), not link-up: an enabled
+        plane with a dead BLE link must stay visible — DOWN on this tile is
+        an alarm to act on, not a device absence to hide."""
+        rt = self.rt
+        return bool(rt and rt.enabled)
+
     def tick(self):
         rt = self.rt
         if not rt:

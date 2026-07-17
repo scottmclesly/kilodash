@@ -13,7 +13,7 @@ part of this mesh — nothing here touches it.
 
 | Setting | Value | Why |
 |---|---|---|
-| Region | **US** (915 MHz) | A region mismatch = silent no-mesh, the #1 bring-up failure. Verify first, always. |
+| Region | **EU_433** | The T3s are the **433 MHz hardware variant**; EU_433 is Meshtastic's 433 band plan. A 433 front-end set to US-915 transmits nothing (bench fact 2026-07-17 — cost a full e2e run). Region/band mismatch = silent no-mesh, the #1 bring-up failure. Verify first, always. |
 | Modem preset | **LONG_SLOW** | Alerts + short commands, not streaming: the slow preset buys link margin over water. Must be identical everywhere — a preset mismatch is as dead as a region mismatch. |
 | Firmware | stock Meshtastic ≥ 2.5 | 2.5+ gives PKI remote admin (Prime governing the sensor node over the air). |
 
@@ -40,10 +40,16 @@ Expected node IDs (fill in at bench bring-up; the ScotCmd column feeds
 
 | Node | Node ID | On ScotCmd? |
 |---|---|---|
-| Prime radio | `!ea244ad4` (BLE `E8:6B:EA:24:4A:D6`, TLORA_V2_1_1P6, fw 2.7.26) | yes (the executor's own radio) |
-| Sensor node | `!________` | no |
+| Prime radio | `!ea244ad4` (BLE `E8:6B:EA:24:4A:D6`, TLORA_V2_1_1P6 **433 MHz**, fw 2.7.26) | yes (the executor's own radio) |
+| Sensor node "Kate" | `!ea245c80` (BLE `E8:6B:EA:24:5C:82`, TLORA_V2_1_1P6 **433 MHz**) | **yes — dual duty**: sensor node AND the phone's pager/commander seat until a dedicated commander radio exists; her ID is in `microkvm.allowed_nodes`. Owner name kept as "Kate (KATE)" (deliberately named — the roster's "Scottina Sensor" was a placeholder). |
 | Light companion | `!________` | no |
-| Phone | `!________` | yes → allowed_nodes |
+| Phone | rides Kate (no radio of its own) | via Kate |
+
+E2E proven 2026-07-17: `status` / `snap` answered and `tile` correctly
+rejected `disarmed` over the air (Kate → LoRa 433 → PRIM → BLE → executor);
+remote admin read of Kate's telemetry interval via PRIM with the PKI admin
+key. When a dedicated commander radio arrives: move ScotCmd + allowed_nodes
+membership off Kate.
 
 Prime radio public key (2026-07-16, feeds the sensor node's
 `security.admin_key` for over-the-air admin):
