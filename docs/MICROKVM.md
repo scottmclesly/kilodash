@@ -85,6 +85,13 @@ confirms the verb actually ran.
 
 - `status` answers but action verbs say `reject disarmed` — Prime can still
   reach `home_host`; that's the design. Use SSH/web instead.
+- **Message "acknowledged" on the phone but no reply** — you sent on the
+  wrong channel. Commands only count on **ScotCmd**; a frame on ScotTel
+  (the pager channel) is heard by the radio (hence the ack) but dropped
+  before the executor, by design — the command-channel boundary is the
+  auth boundary (§6), so pager chatter can never execute. In the Meshtastic
+  app, switch to the **ScotCmd** chat and send there. The tile's `dropped`
+  counter ticks up on each off-channel/unknown-node frame.
 - No reply at all: check the tile (BLE link DOWN? node not on
   `allowed_nodes` → dropped silently by contract). The session log names
   every drop reason.
