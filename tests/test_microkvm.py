@@ -167,7 +167,9 @@ class TestHelpMenu(unittest.TestCase):
 
     def test_help_answers_while_disarmed(self):
         ex = make_executor(armed=False)
-        self.assertTrue(ex.handle("help").startswith("verbs:"))
+        reply = ex.handle("help")
+        self.assertIn("report:", reply)
+        self.assertIn("act off-grid:", reply)
 
     def test_unknown_verb_suggests_help(self):
         ex = make_executor()

@@ -40,7 +40,7 @@ log (every command received: sender, accept/reject reason, reply sent).
 
 | You send | You get back |
 |---|---|
-| `help` (or `?`, `menu`) | `verbs: status health snap tile cap svc reboot help \| send 'help <verb>' for options` |
+| `help` (or `?`, `menu`) | `report: status(up/temp) health(services) snap(1 metric) \| act off-grid: tile(switch screen) cap(capture) svc(restart) reboot \| 'help <verb>' for options` — grouped into what *reports* (safe anytime) and what *acts* (only off-grid) |
 | `help tile` | `tile [action]: name={home lanscan nmea2k pihealth signalk settings …}` — the exact options you can pass |
 | `status` | `status: up 3h04m, 47.2C, tile=home, armed=yes, rssi=-104/8.5` |
 | `health` | `health: svcs kilodash=up signalk=down…, disk 21%, mem 34%, temp 47.2C, armed=yes` |

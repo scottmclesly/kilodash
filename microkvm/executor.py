@@ -201,8 +201,18 @@ class Executor:
 
     def _do_help(self, args, argv):
         if not args:
-            return ("verbs: " + " ".join(self.registry)
-                    + " | send 'help <verb>' for options")
+            # Group by class and gloss each verb, so the bare menu teaches the
+            # model — what reports (safe anytime) vs what acts (off-grid only)
+            # — instead of listing eight opaque words. Kept to one frame.
+            def term(v):
+                return f"{v.name}({v.gloss})" if v.gloss else v.name
+            reads = [v for v in self.registry.values()
+                     if v.klass == reg.READ_ONLY and not v.variadic]
+            acts = [v for v in self.registry.values()
+                    if v.klass == reg.ACTION]
+            return (f"report: {' '.join(term(v) for v in reads)}"
+                    f" | act off-grid: {' '.join(term(v) for v in acts)}"
+                    " | 'help <verb>' for options")
         target = "help" if args[0] in self._HELP_ALIASES else args[0]
         verb = self.registry.get(target)
         if verb is None:
