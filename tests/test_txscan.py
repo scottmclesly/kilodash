@@ -1,0 +1,158 @@
+"""Tree-wide CAN-TX allow-list scan — the Phase 3 carve-out, enforced in
+code (GPS-Integration TODO: "evolve the AST scan from 'no TX anywhere' to
+a positive allow-list of TX-permitted modules").
+
+The scope constraint it makes executable: diagnostics only, with exactly
+two named TX exceptions — (1) link-layer heartbeat/reply behavior required
+by bus participation (lives in CanTick firmware, not in this tree), and
+(2) the GNSS source node `n2k/node.py` (address claim, claim defense, ISO
+request responses, the five GNSS PGNs), started and stopped only by an
+explicit user action. Any send-shaped call on a socket in ANY other module
+hard-fails the build; modules that legitimately speak non-CAN sockets are
+each named with their justification. The per-module RX-only scans in
+tests/test_busmon.py / test_n2k.py remain as the independent reject pass.
+
+Run from the repo root:  python -m unittest discover -s tests
+"""
+
+import ast
+import os
+import sys
+import unittest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+SCAN_ROOTS = ("kilodash", "gps", "tables", "n2k", "microkvm", "tools")
+
+# The positive allow-list: modules permitted to transmit on a CAN socket.
+ALLOWED_CAN_TX = {
+    "n2k/node.py",          # GNSS source node — the Phase 3 carve-out
+}
+
+# Modules permitted send-family calls on NON-CAN sockets, each justified.
+ALLOWED_NET_SEND = {
+    "gps/gpsdio.py",        # one sendall(): the ?WATCH command to gpsd's
+                            # localhost JSON socket (TCP, never CAN)
+}
+
+SEND_ATTRS = {"send", "sendall", "sendto", "sendmsg", "sendfile"}
+CAN_MARKERS = {"AF_CAN", "PF_CAN", "CAN_RAW", "CAN_BCM", "CAN_EFF_FLAG"}
+TX_PROGS = {"cansend", "cangen", "canplayer", "canfdtest"}
+
+
+def scan_source(relpath, text):
+    """Violations in one module. Rules:
+    - send/sendall/sendto/sendmsg/sendfile is forbidden everywhere except
+      the two allow-lists above (a CAN frame leaves python only through a
+      socket send, so this is the choke point);
+    - a module that touches CAN constants additionally may not os.write()
+      (the fd-level back door to a SocketCAN socket) unless CAN-allow-listed;
+    - TX-capable can-utils program names are forbidden in call arguments in
+      every module, allow-listed or not — the node speaks sockets, not
+      shell-outs.
+    """
+    tree = ast.parse(text, relpath)
+    referenced = {n.attr for n in ast.walk(tree)
+                  if isinstance(n, ast.Attribute)}
+    referenced |= {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    is_can_module = bool(referenced & CAN_MARKERS)
+    can_ok = relpath in ALLOWED_CAN_TX
+    net_ok = relpath in ALLOWED_NET_SEND
+    out = []
+    for call in (n for n in ast.walk(tree) if isinstance(n, ast.Call)):
+        fn = call.func
+        name = fn.attr if isinstance(fn, ast.Attribute) else \
+            fn.id if isinstance(fn, ast.Name) else ""
+        if name in SEND_ATTRS and not can_ok and not net_ok:
+            out.append(f"{relpath}:{call.lineno}: {name}() — TX-shaped "
+                       "socket call outside the allow-list")
+        if name == "write" and isinstance(fn, ast.Attribute) \
+                and isinstance(fn.value, ast.Name) and fn.value.id == "os" \
+                and is_can_module and not can_ok:
+            out.append(f"{relpath}:{call.lineno}: os.write() in a "
+                       "CAN-touching module outside the allow-list")
+        for arg in ast.walk(call):
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str) \
+                    and arg.value in TX_PROGS:
+                out.append(f"{relpath}:{call.lineno}: invokes TX-capable "
+                           f"tool {arg.value!r}")
+    return out
+
+
+def iter_modules():
+    for root in SCAN_ROOTS:
+        base = os.path.join(ROOT, root)
+        if not os.path.isdir(base):
+            continue
+        for dirpath, dirnames, filenames in os.walk(base):
+            dirnames[:] = [d for d in dirnames if d != "__pycache__"]
+            for fn in sorted(filenames):
+                if fn.endswith(".py"):
+                    full = os.path.join(dirpath, fn)
+                    yield os.path.relpath(full, ROOT).replace(os.sep, "/")
+
+
+class TestTreeWideTxScan(unittest.TestCase):
+    def test_whole_tree_passes(self):
+        violations = []
+        scanned = 0
+        for rel in iter_modules():
+            with open(os.path.join(ROOT, rel)) as f:
+                violations += scan_source(rel, f.read())
+            scanned += 1
+        self.assertGreater(scanned, 30)      # the walk actually walked
+        self.assertEqual(violations, [],
+                         "\n".join(["CAN-TX scope violations:"] + violations))
+
+    def test_allow_list_is_exactly_the_carve_out(self):
+        """The carve-out is these modules and no more — growing the list
+        is a scope decision, not a refactor detail."""
+        self.assertEqual(ALLOWED_CAN_TX, {"n2k/node.py"})
+
+
+class TestScanCatches(unittest.TestCase):
+    """The scan's own tests: synthetic modules prove the detector fires
+    (and that the allow-list actually allows)."""
+
+    SCREEN_TX = (
+        "import socket\n"
+        "def evil(iface):\n"
+        "    s = socket.socket(socket.AF_CAN, socket.SOCK_RAW,"
+        " socket.CAN_RAW)\n"
+        "    s.bind((iface,))\n"
+        "    s.send(b'\\x00' * 16)\n"
+    )
+
+    def test_screen_module_txing_fails(self):
+        v = scan_source("kilodash/screens/gps.py", self.SCREEN_TX)
+        self.assertTrue(any("send()" in x for x in v))
+
+    def test_allow_listed_module_txing_passes(self):
+        self.assertEqual(scan_source("n2k/node.py", self.SCREEN_TX), [])
+
+    def test_os_write_backdoor_in_can_module_fails(self):
+        src = ("import os, socket\n"
+               "F = socket.CAN_RAW\n"
+               "def sneak(fd):\n"
+               "    os.write(fd, b'frame')\n")
+        v = scan_source("kilodash/busmon.py", src)
+        self.assertTrue(any("os.write" in x for x in v))
+        # …but ordinary file/serial os.write in a non-CAN module is fine
+        self.assertEqual(scan_source("kilodash/lightdock.py",
+                                     "import os\nos.write(1, b'x')\n"), [])
+
+    def test_can_utils_tx_program_fails_everywhere(self):
+        src = "import subprocess\nsubprocess.run(['cansend', 'can0', '1#'])\n"
+        for rel in ("kilodash/screens/canbus.py", "n2k/node.py"):
+            v = scan_source(rel, src)
+            self.assertTrue(any("cansend" in x for x in v), rel)
+
+    def test_net_send_allowance_is_narrow(self):
+        src = "def f(s):\n    s.sendall(b'?WATCH')\n"
+        self.assertEqual(scan_source("gps/gpsdio.py", src), [])
+        self.assertTrue(scan_source("gps/snapshotd.py", src))
+
+
+if __name__ == "__main__":
+    unittest.main()

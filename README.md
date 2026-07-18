@@ -169,6 +169,7 @@ plugged in** (hotplug, see `devices.py`) and carry a small green "live" badge.
 | **WiFi Sniff** | ALFA (2nd adapter) | Passive monitor-mode capture with `airodump-ng` — every AP/client it hears (SSID, channel, encryption, signal). A watchdog keeps the Pi's own uplink (`wlan0`) connected the whole time. Passive only, no injection. Full user guide: [docs/WIFISNIFF.md](docs/WIFISNIFF.md). |
 | **CAN** | CanTick/slcan0 (or CANable / gs_usb) | **Raw sniff, byte-watch alerts, candump logs.** Raw-bus forensics for proprietary traffic: a **seen-IDs table** (count, rate, last payload, changed-bytes highlight), tap a row → **byte grid** → per-byte watches (change-detection or value-match; badge + row flash, never modal), a bounded ring log with filters exported as replayable candump `.log` (SavvyCAN-loadable), plus the Setup tab: bitrate select/**autodetect**, continuous logging, and the **CanTick** WiFi bridge — see below. Full user guide: [docs/CANBUS.md](docs/CANBUS.md). |
 | **NMEA2K** | CanTick/slcan0 + PGN tables | **Live decode, range/appearance alerts.** Semantic decode of known PGNs against tables from the Tables converter ([TABLES.md](TABLES.md)): fast-packet reassembly → PGN lookup → per-field values with units; alerts when a field **exits a range** or a configured PGN **appears at all**; unknown PGNs are counted, listed, and hand over to the CAN screen in one tap. Decoded log exports as JSON lines. Guide: [docs/NMEA2K.md](docs/NMEA2K.md). |
+| **GPS** | PA1616S @ `/dev/gps0` (port 1-1) | **Time authority, geotag snapshots, sky plot, N2K GNSS source.** Adafruit Ultimate GPS on the PL2303 dongle udev-pinned to USB port 1-1 (*the GPS jack* — the dongle has no serial number, so the physical port IS the identity). Ecosystem plumbing first, tile second: **gpsd + chrony** make the box a disconnected time authority (serial-only, no PPS — tens-of-ms honesty), the **position snapshot contract** ([GPS.md](GPS.md)) geotags capture artifacts, and the tile shows a phosphor **sky plot** (per-sat az/el/SNR, used vs visible) over fix/HDOP/position/UTC and the chrony *"am I the time authority right now"* line. The **Source GNSS → bus** button lives on the NMEA2K tile (it's a bus action). Install with [`setup/install-gps.sh`](setup/install-gps.sh). |
 | **I2C Scan** | onboard i2c-1 | `i2cdetect` on the Pi's bus with best-guess names for responding addresses. User guide: [docs/I2C-SERIAL.md](docs/I2C-SERIAL.md#i2c-scan). |
 | **Serial** | FTDI / CP210x / CH340 | Lists USB-serial ports and gives a read-only live view of one at a chosen baud — handy for sniffing UART/debug output. User guide: [docs/I2C-SERIAL.md](docs/I2C-SERIAL.md#serial). |
 | **Logic** | FX2LP (CY7C68013A) | Passive multi-channel digital capture + protocol decode (UART/I2C/SPI/CAN) via the packaged `sigrok-cli`/fx2lafw stack: 8 channels, up to 24 MHz, edge trigger, decoded annotations + per-channel activity strips. Every capture persists to `/opt/kilodash/captures/*.sr` for PulseView on a laptop. Install with [`setup/install-logic-analyzer.sh`](setup/install-logic-analyzer.sh); full user guide: [docs/LOGICANALISER.md](docs/LOGICANALISER.md). **3.3 V logic only** — the bare board has no input protection; series resistor / buffer / divider before probing anything near Scottina's 12 V wiring. |
@@ -349,20 +350,23 @@ Tests in `tests/` prove each mode's exact arg array and that every flag above is
 refused (`python -m unittest discover -s tests`). Full task list:
 [LAN-Scan-Refactor-TODO.md](LAN-Scan-Refactor-TODO.md).
 
-### CAN scope (the one TX exception, stated explicitly)
+### CAN scope (the TX exception, stated explicitly)
 
-The CAN and NMEA2K screens are **diagnostics only. One exception, stated
-explicitly: CAN has normal TX/RX *solely* for correct heartbeat/reply
-behavior required by bus participation (e.g. NMEA2000 address claim / ISO
-request responses). No injection, replay, fuzzing, or arbitrary-frame TX is
-expressible anywhere in the UI or command builders.** That exception lives
-in the **link layer only** (the CanTick firmware / N2K stack — see
-[PROTOCOL.md](To-DoLists/PROTOCOL.md)), never in any user-facing control:
-both screens' SocketCAN sockets are recv-only, and — same discipline as the
-LAN Scan flags — this is enforced in code, not by convention:
-`tests/test_busmon.py` / `tests/test_n2k.py` AST-scan the screens and their
-bus models every test run (positive allow-list + independent reject pass
-over send-shaped calls and TX-capable can-utils invocations).
+The CAN and NMEA2K screens are **diagnostics only. The CAN TX exception now
+covers two things, both stated explicitly: (1) heartbeat/reply behavior
+required by bus participation — the link layer's job (CanTick firmware, see
+[PROTOCOL.md](To-DoLists/PROTOCOL.md)); and (2) the GNSS source node
+(`n2k/node.py`) — ISO address claim, claim defense, ISO request responses,
+and the five GNSS PGNs (126992, 129025, 129026, 129029, 126993), started
+and stopped only by an explicit user action ("Source GNSS → bus" on the
+NMEA2K tile). No injection, replay, fuzzing, or arbitrary-frame TX is
+expressible anywhere in the UI or command builders.** Enforced in code, not
+by convention, same discipline as the LAN Scan flags:
+`tests/test_txscan.py` AST-scans the **whole tree** against a positive
+allow-list of TX-permitted modules (exactly one: `n2k/node.py`) — any
+send-shaped call on a socket in any other module fails the build — while
+`tests/test_busmon.py` / `tests/test_n2k.py` remain the independent reject
+pass keeping both screens and their bus models RX-only.
 
 ## Roadmap
 

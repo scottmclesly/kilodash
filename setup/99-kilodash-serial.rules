@@ -1,0 +1,26 @@
+# kilodash serial-dongle identity registry — port path IS the identity.
+#
+# Several of this box's serial dongles (the PL2303 GPS dongle first among
+# them) carry NO unique serial number, so /dev names are pinned to the
+# PHYSICAL USB PORT (KERNELS == the port's sysfs name), never to VID:PID
+# alone and never to the kernel's ttyUSB enumeration order. Plug discipline
+# is therefore a hard requirement: swapping dongles between jacks silently
+# swaps device identities.
+#
+# Port → device assignment table (keep this current — this header is the
+# registry as more per-port dongles land):
+#
+#   port 1-1  (usb1 root hub, top-level)  →  /dev/gps0
+#             Adafruit Ultimate GPS PA1616S on PL2303 (067b:2303).
+#             Time authority + geotag snapshots + N2K GNSS source.
+#
+# Installed to /etc/udev/rules.d/ by setup/install-gps.sh
+# (then: udevadm control --reload && udevadm trigger).
+
+# TAG systemd + WANTS: every plug event kicks the replug oneshot, which
+# restarts gpsd so its ExecStartPre re-configures the (battery-less, hence
+# factory-reset) module before the port is opened.
+ACTION=="add|change", SUBSYSTEM=="tty", KERNELS=="1-1", \
+  ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", \
+  SYMLINK+="gps0", MODE="0660", GROUP="dialout", \
+  TAG+="systemd", ENV{SYSTEMD_WANTS}+="kilodash-gps-replug.service"

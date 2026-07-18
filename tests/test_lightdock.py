@@ -310,6 +310,18 @@ class TestSyncEngine(PTYTestCase):
         self.assertTrue(any("clock NOT sent" in t
                             for t in self._texts(engine)))
 
+    def test_gps_clock_quality_underclaims_to_v1_light(self):
+        # DOCK-PROTOCOL v1.1: a v1-foundation Light rejects quality 3 (gps)
+        # per its §7 reject pass; the engine must resend the same epoch as
+        # rtc — underclaim, never overclaim — and say so in the log.
+        fake, path = self.make_fake()
+        engine = self._engine(path, clock_source=lambda: (3, "gps"),
+                              pull_logs=False)
+        self.assertEqual(engine.run(), engine.COMPLETE)
+        self.assertEqual(fake.state["clock_epoch"], FIXED_EPOCH)
+        self.assertEqual(fake.state["clock_quality"], 1)
+        self.assertTrue(any("underclaim" in t for t in self._texts(engine)))
+
     def test_wedged_light_degrades_to_a_truthful_line(self):
         class WedgedAfterHello(FakeLight):
             def _cmd_list(self, seq, payload):

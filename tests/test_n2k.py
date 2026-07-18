@@ -244,6 +244,52 @@ class TestMonitor(unittest.TestCase):
             self.assertEqual(n, 2)
 
 
+class TestGpsBusDelta(unittest.TestCase):
+    """Phase 4 comparison: decoded position PGNs from another source vs
+    the local snapshot — offsets in meters, unit-tolerant SOG/COG."""
+
+    SNAP = {"lat": 51.5000, "lon": -0.1200, "sog_mps": 2.0,
+            "cog_deg_true": 90.0}
+
+    @staticmethod
+    def f(name, value, units=""):
+        return {"name": name, "value": value, "disp": "", "units": units}
+
+    def test_position_offset_meters(self):
+        # ~0.001° north ≈ 111 m
+        fields = [self.f("Latitude", 51.5010, "deg"),
+                  self.f("Longitude", -0.1200, "deg")]
+        d = n2k.gps_bus_delta(fields, self.SNAP)
+        self.assertAlmostEqual(d["dist_m"], 111.3, delta=1.0)
+        self.assertEqual(n2k.delta_severity(d), "bad")
+        close = [self.f("Latitude", 51.50003, "deg"),
+                 self.f("Longitude", -0.12001, "deg")]
+        d = n2k.gps_bus_delta(close, self.SNAP)
+        self.assertEqual(n2k.delta_severity(d), "ok")
+
+    def test_sog_cog_units_normalized(self):
+        fields = [self.f("SOG", 4.0, "knots"),        # ≈ 2.06 m/s
+                  self.f("COG", 1.5708, "rad")]       # ≈ 90°
+        d = n2k.gps_bus_delta(fields, self.SNAP)
+        self.assertAlmostEqual(d["d_sog_mps"], 0.058, places=2)
+        self.assertAlmostEqual(d["d_cog_deg"], 0.0, places=1)
+
+    def test_no_overlap_or_no_fix_is_empty(self):
+        self.assertEqual(n2k.gps_bus_delta(
+            [self.f("Wind Speed", 5.0, "m/s")], self.SNAP), {})
+        self.assertEqual(n2k.gps_bus_delta(
+            [self.f("Latitude", 51.5, "deg")], None), {})
+        # not-available values never compare
+        self.assertEqual(n2k.gps_bus_delta(
+            [self.f("Latitude", None, "deg"),
+             self.f("Longitude", None, "deg")], self.SNAP), {})
+
+    def test_cog_wraps_shortest_way(self):
+        snap = {**self.SNAP, "cog_deg_true": 359.0}
+        d = n2k.gps_bus_delta([self.f("COG", 0.0349, "rad")], snap)  # ≈ 2°
+        self.assertAlmostEqual(d["d_cog_deg"], 3.0, delta=0.2)
+
+
 class TestNoTxN2k(TestNoTx):
     """Same RX-only enforcement, over the NMEA2K modules."""
     MODULES = ("kilodash/n2k.py", "kilodash/screens/n2k.py")

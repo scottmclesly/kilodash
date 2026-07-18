@@ -14,6 +14,7 @@ from .tables import TablesScreen
 from .i2cscan import I2cScreen
 from .serialmon import SerialScreen
 from .logic import LogicScreen
+from .gps import GpsScreen
 from .files import FilesScreen
 from .lightdock import LightDockScreen
 from .kismet import KismetScreen
@@ -36,6 +37,7 @@ SCREENS = [
     I2cScreen,           # device: i2c
     SerialScreen,        # device: serial
     LogicScreen,         # device: la (FX2LP logic analyzer)
+    GpsScreen,           # device: gps (PA1616S @ /dev/gps0, port 1-1)
     FilesScreen,         # device: usbstick (log offload + decode tables)
     LightDockScreen,     # device: scottinalight (dock auto-sync)
     TablesScreen,        # always visible: converter service + store mirror

@@ -20,6 +20,7 @@ exception) are the link layer's job, never done here.
 """
 
 import json
+import math
 import os
 import threading
 import time
@@ -73,6 +74,62 @@ def extract_field(payload, f):
     if f["units"]:
         disp += f" {f['units']}"
     return raw, value, disp
+
+
+_M_PER_DEG = 111_320.0          # good enough for a delta badge
+
+
+def _field_value(fields, *needles):
+    """First decoded field whose name matches a needle (case-insensitive
+    substring) → (value, units), or (None, None). Table field names vary
+    by vendor doc, so matching is deliberately loose."""
+    for f in fields:
+        name = f["name"].lower()
+        if any(n in name for n in needles) and f["value"] is not None:
+            return f["value"], (f.get("units") or "").lower()
+    return None, None
+
+
+def gps_bus_delta(fields, snap):
+    """GPS-vs-bus comparison (diagnostics payoff): decoded position/COG/SOG
+    fields from ANOTHER source vs our local GPS snapshot. Returns a dict
+    with any of dist_m / d_sog_mps / d_cog_deg that could be computed —
+    empty when nothing overlaps. Callers must exclude our own claimed SA:
+    comparing our sourced PGNs against their own origin would "validate"
+    the GPS against itself."""
+    out = {}
+    if not snap or snap.get("lat") is None:
+        return out
+    lat, _u = _field_value(fields, "latitude")
+    lon, _u = _field_value(fields, "longitude")
+    if lat is not None and lon is not None:
+        mlat = math.radians((lat + snap["lat"]) / 2)
+        dx = (lon - snap["lon"]) * _M_PER_DEG * math.cos(mlat)
+        dy = (lat - snap["lat"]) * _M_PER_DEG
+        out["dist_m"] = math.hypot(dx, dy)
+    sog, units = _field_value(fields, "sog", "speed over ground")
+    if sog is not None and snap.get("sog_mps") is not None:
+        if "knot" in units or units == "kn":
+            sog *= 0.514444
+        out["d_sog_mps"] = sog - snap["sog_mps"]
+    cog, units = _field_value(fields, "cog", "course over ground")
+    if cog is not None and snap.get("cog_deg_true") is not None:
+        if "rad" in units:
+            cog = math.degrees(cog)
+        out["d_cog_deg"] = (cog - snap["cog_deg_true"] + 180) % 360 - 180
+    return out
+
+
+def delta_severity(delta):
+    """Threshold badge color key for a comparison: ok < 10 m, warn < 50 m,
+    bad beyond (SOG/COG-only comparisons rate by SOG: 0.5 / 2 m/s)."""
+    if "dist_m" in delta:
+        d = delta["dist_m"]
+        return "ok" if d < 10 else "warn" if d < 50 else "bad"
+    if "d_sog_mps" in delta:
+        d = abs(delta["d_sog_mps"])
+        return "ok" if d < 0.5 else "warn" if d < 2 else "bad"
+    return "ok"
 
 
 class FastPacketAssembler:
@@ -328,4 +385,6 @@ class N2kMonitor:
                                for fl in r["fields"]},
                 }) + "\n")
         os.replace(path + ".tmp", path)
+        from .busmon import write_geotag_sidecar
+        write_geotag_sidecar(path)
         return len(recs), path

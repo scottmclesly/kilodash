@@ -1,0 +1,16 @@
+[Unit]
+Description=kilodash GPS position snapshot writer (GPS.md contract)
+Documentation=file:/opt/kilodash/GPS.md
+After=gpsd.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/kilodash
+ExecStart=/usr/bin/python3 -m gps.snapshotd
+# Crash-only by design (GPS.md §1): no ExecStop, no cleanup. If this dies,
+# the snapshot goes stale and every consumer correctly reads "no fix".
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -1,7 +1,11 @@
 # DOCK-PROTOCOL.md
 
-**Status:** v1.0 — RATIFIED by both sides, 2026-07-12.
-**Protocol version:** `1`
+**Status:** v1.1 — v1.0 RATIFIED by both sides 2026-07-12; v1.1 amendment
+(SET_CLOCK quality value `3 gps`, 2026-07-18) is Prime-proposed and
+**pending Light-side ack** — see the ledger.
+**Protocol version:** `1` (the amendment adds an enum value, not a frame
+shape; §8's HELLO/SET_CLOCK wire-compatibility promise holds and the
+sender-side fallback below keeps v1.0 receivers working unmodified)
 **Mirrored verbatim** in [Scottina-Light](https://github.com/scottmclesly/Scottina-Light)
 (firmware, responder) and kilodash (Prime, initiator). Neither side changes this
 file alone; a change is a PR against both, exactly as `PROTOCOL.md` couples
@@ -147,10 +151,21 @@ Request:
 
 ```
   u64     epoch                  unix seconds, UTC
-  u8      quality                0 unsynced | 1 rtc | 2 ntp
+  u8      quality                0 unsynced | 1 rtc | 2 ntp | 3 gps
 ```
 
 Response: `u8 ok`, `u64 epoch_echo`.
+
+**`3 gps` (v1.1):** Prime's clock is disciplined by its local GPS receiver
+via chrony (serial NMEA, no PPS — tens-of-ms accuracy, network-independent).
+Semantic ordering: `ntp ≥ gps > rtc > unsynced` — the numeric wire values
+are labels, not a quality scale. Compatibility, both directions:
+
+- A receiver that does not know a quality value MUST reject the frame per
+  its §7 reject pass (this is what `v1-foundation` already does).
+- A sender whose `SET_CLOCK` is rejected for an unknown quality MUST
+  resend **underclaiming** as `1 rtc` — a downgrade is honest, an upgrade
+  never is. The epoch itself is unchanged.
 
 **Prime MUST send its honest quality.** Pi 5's RTC only holds through power-off
 with the coin cell fitted; Prime must not claim `ntp` unless NTP is
@@ -521,3 +536,13 @@ keep, it is a new protocol version — not a bolt-on to this one.
       codec passes all 47 vectors as a unit test; Prime's sync engine runs
       green against the fake Light replaying the same bytes. This file is
       `v1.0`; the DRAFT banner is off.
+- [ ] **v1.1 amendment (2026-07-18, Prime-proposed): SET_CLOCK quality
+      `3 gps`** — Prime now carries a GPS-disciplined clock (chrony +
+      PA1616S, serial-only). New enum value in §4 SET_CLOCK; semantic
+      ordering `ntp ≥ gps > rtc > unsynced`; sender MUST underclaim to
+      `1 rtc` when rejected. Vectors `set-clock-gps-rejected-by-v1` and
+      `set-clock-gps-fallback-rtc` (vectors_version 0.3) pin that a v1.0
+      Light's §7 reject IS the compatible path, so **nothing breaks
+      unmodified firmware**. Pending Light-side ack; accepting quality 3
+      natively is a Light firmware change plus a rewrite of the first
+      vector's expectation — both repos in one PR, per the header rule.

@@ -215,6 +215,8 @@ class Devices:
             p.add("serial")
         if os.path.exists("/dev/i2c-1"):
             p.add("i2c")
+        if os.path.exists("/dev/gps0"):
+            p.add("gps")                # PA1616S pinned to port 1-1 (udev)
         if ids & FX2LA_IDS:
             p.add("la")
         if _cantick_usb_base():

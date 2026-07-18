@@ -18,11 +18,14 @@ screen contain no send/write calls at all (positive allow-list + reject
 pass, enforced in code, not by convention).
 """
 
+import json
 import os
 import socket
 import struct
 import threading
 import time
+
+from gps import snapshot as gps_snapshot
 
 CAN_EFF_FLAG = 0x80000000
 CAN_RTR_FLAG = 0x40000000
@@ -39,6 +42,22 @@ ALERT_FLASH_S = 1.5             # how long a watch hit keeps its row flashing
 
 WATCH_CHANGE = "change"         # alert when byte differs from last-seen value
 WATCH_MATCH = "match"           # alert when byte becomes the configured value
+
+
+def write_geotag_sidecar(artifact_path):
+    """GPS.md §4: stamp a freshly written capture artifact with one
+    position snapshot (or a truthful reason for its absence) in a
+    `<artifact>.meta.json` sidecar. tmp + rename like every capture
+    writer. Never raises — geotagging must not break a capture."""
+    meta = {"artifact": os.path.basename(artifact_path),
+            **gps_snapshot.geotag()}
+    try:
+        with open(artifact_path + ".meta.json.tmp", "w") as f:
+            json.dump(meta, f)
+        os.replace(artifact_path + ".meta.json.tmp",
+                   artifact_path + ".meta.json")
+    except OSError:
+        pass
 
 
 def parse_frame(buf):
@@ -219,6 +238,7 @@ class BusMonitor:
             for ts, cid, ext, rtr, data, _ch in recs:
                 f.write(log_line(ts, iface, cid, ext, rtr, data) + "\n")
         os.replace(path + ".tmp", path)
+        write_geotag_sidecar(path)
         return len(recs), path
 
 

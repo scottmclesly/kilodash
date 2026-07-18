@@ -68,7 +68,12 @@ ERROR_CODES = {v: k for k, v in ERRORS.items()}
 TIMEOUT_DEFAULT = 2.0
 TIMEOUTS = {"COMMIT": 30.0, "DELETE": 60.0}
 
-CLOCK_QUALITY_NAMES = {0: "unsynced", 1: "rtc", 2: "ntp"}
+CLOCK_QUALITY_NAMES = {0: "unsynced", 1: "rtc", 2: "ntp", 3: "gps"}
+# Semantic ordering (DOCK-PROTOCOL.md v1.1): ntp ≥ gps > rtc > unsynced.
+# The numeric wire values are labels, not a quality scale. A v1-foundation
+# Light rejects the unknown value 3 per its §7 reject pass; the engine then
+# underclaims as `rtc` — a downgrade is honest, an upgrade never is.
+CLOCK_QUALITY_V1_FALLBACK = {3: 1}
 # System time earlier than this cannot be real (Pi 5 RTC with no coin cell
 # resets across power-off); an implausible clock is reported unsynced.
 CLOCK_PLAUSIBLE_FLOOR = 1735689600      # 2025-01-01T00:00:00Z
@@ -435,14 +440,30 @@ class DockClient:
 def clock_quality(runner=None):
     """(quality, name) for SET_CLOCK — honest, never optimistic (§4).
 
-    `ntp` only if NTP is synchronized RIGHT NOW (timedatectl); `rtc` only if
-    a hardware RTC exists AND system time is plausible (Pi 5's RTC holds
-    through power-off only with the coin cell fitted); otherwise `unsynced`,
-    and the engine sends nothing rather than stamp Light's logs with a lie.
+    `gps` if chrony is synchronized to the GPS refclock right now (better
+    than `rtc`/`unsynced` and network-independent — GPS-Integration Phase
+    1); `ntp` only if NTP is synchronized RIGHT NOW (timedatectl); `rtc`
+    only if a hardware RTC exists AND system time is plausible (Pi 5's RTC
+    holds through power-off only with the coin cell fitted); otherwise
+    `unsynced`, and the engine sends nothing rather than stamp Light's
+    logs with a lie.
+
+    Ordering note: chrony synced to the GPS refclock also reports
+    NTPSynchronized=yes through timedatectl, so the GPS check must run
+    first — claiming `ntp` off a GPS-disciplined clock would be the
+    optimistic lie this function exists to prevent.
     """
     if runner is None:
         from . import system
         runner = system.run
+    tracking = runner(["chronyc", "tracking"]) or ""
+    lines = tracking.splitlines()
+    synced = any(l.startswith("Leap status") and "Normal" in l
+                 for l in lines)
+    ref_is_gps = any(l.startswith("Reference ID") and "(GPS)" in l
+                     for l in lines)
+    if synced and ref_is_gps:
+        return 3, "gps"
     if runner(["timedatectl", "show", "-p", "NTPSynchronized",
                "--value"]).strip().lower() == "yes":
         return 2, "ntp"
@@ -560,7 +581,19 @@ class LightDockSync:
                       "labeled, never laundered)")
             return
         epoch = int(self._time())
-        self.client.set_clock(epoch, quality)
+        try:
+            self.client.set_clock(epoch, quality)
+        except DockRemoteError:
+            fallback = CLOCK_QUALITY_V1_FALLBACK.get(quality)
+            if fallback is None:
+                raise
+            # A pre-v1.1 Light rejects the `gps` flag value per its §7
+            # reject pass. Underclaim and resend: a downgrade is honest.
+            self.client.set_clock(epoch, fallback)
+            self._log("clock quality %s unknown to this Light — sent as %s "
+                      "(underclaim, never overclaim)"
+                      % (qname, CLOCK_QUALITY_NAMES[fallback]))
+            qname = CLOCK_QUALITY_NAMES[fallback]
         prior = ("was %s" % CLOCK_QUALITY_NAMES.get(
             hello_info["clock_quality"], "?")
             if hello_info["clock_epoch"] else "was never set")

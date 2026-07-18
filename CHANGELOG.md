@@ -9,6 +9,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **GPS integration** (contract in `GPS.md`; Adafruit Ultimate GPS PA1616S
+  on the PL2303 dongle udev-pinned to USB port 1-1 → `/dev/gps0` — the
+  dongle has no serial number, so the physical port IS the identity):
+  - **Phase 0 bring-up** — `setup/99-kilodash-serial.rules` (the port→device
+    registry lives in the rule-file header) and `gps/pa1616s.py`: two-baud
+    probe (115200 then factory 9600 — no backup battery today means every
+    boot is a cold start; the probe also handles the battery-installed
+    future), checksummed + `PMTK001`-ack-checked config to 115200 / 10 Hz /
+    RMC+GGA+GSA every fix with GSV every 5th (the MTK divisor caps at 5,
+    not the hoped-for 10). Runs as gpsd's `ExecStartPre`; a udev-triggered
+    replug hook restarts gpsd (fresh module = factory defaults again).
+  - **Phase 1 plumbing** — gpsd bound to `/dev/gps0` only (`USBAUTO=false`;
+    autodiscovery would grab CanTick's console or Light's dock port),
+    chrony SHM refclock with root-distance-based fallback ordering (NTP
+    wins while the network exists, GPS when disconnected — no PPS, serial
+    honesty only), and `gps/snapshotd.py` writing the **position snapshot
+    contract** `/run/kilodash/gps/position.json` at 1 Hz (atomic rename,
+    crash-only; GPS.md §3 staleness turns any death into "no fix").
+    Consumers share ONE reader, `gps/snapshot.py::read_position()`;
+    candump/N2K exports now gain `.meta.json` geotag sidecars (§4).
+    Light Dock clock pushes gain the honest `gps` quality flag
+    (DOCK-PROTOCOL.md v1.1 amendment + two new conformance vectors:
+    `ntp ≥ gps > rtc > unsynced`, underclaim-on-reject for v1 Lights).
+  - **GPS tile** (`kilodash/screens/gps.py`, hotplug key `gps`) — phosphor
+    sky plot (az/el polar, dots sized/shaded by SNR, used vs visible) over
+    fix/sats/HDOP/position/SOG/COG/UTC and the chrony "am I the time
+    authority right now" line; sky repaints on SKY cadence, status only on
+    change. Reads gpsd directly (GPS.md §5) via `gps/gpsdio.py`.
+  - **N2K GNSS source node** (`n2k/node.py` + `n2k/fastpacket_tx.py`) — the
+    box becomes a *real bus participant* only on the NMEA2K tile's
+    **Source GNSS → bus** button: full ISO 11783-5 address claim (NAME:
+    Marine / class 60 / function 145, arbitrary-address-capable; preferred
+    SA persisted in `state/n2k_sa.json`), claim defense (lower NAME wins —
+    defend or move; exhaustion → cannot-claim, surfaced, silent), ISO
+    requests for 60928 answered any time, and five PGNs from LIVE gpsd
+    (never the snapshot — no double-staleness): 126992 @1 Hz, 129025 +
+    129026 @10 Hz, 129029 @1 Hz (the ecosystem's first outbound
+    fast-packet, round-trip-tested against our own RX reassembly), 126993
+    @60 s. Auto-stop on fix loss (address kept for quick resume; explicit
+    stop = full re-claim next time). Own-source rows are ▸-tagged in the
+    decode view — self-echo verifies TX but is never mistaken for the
+    boat's GPS.
+  - **TX allow-list carve-out** (`tests/test_txscan.py`) — the AST scan
+    evolved from "no TX anywhere" to a tree-wide positive allow-list with
+    exactly one CAN-TX module (`n2k/node.py`); any send-shaped socket call
+    elsewhere fails the build, self-tested with synthetic offenders. The
+    per-module RX-only scans stay as the independent reject pass.
+  - **GPS-vs-bus comparison** (Phase 4 payoff) — decoded position PGNs
+    from *other* sources get a threshold badge in the field breakdown
+    (green < 10 m, amber < 50 m, red beyond; SOG/COG deltas too,
+    unit-normalized), computed against the local snapshot and excluding
+    our own claimed SA. Installer: `setup/install-gps.sh`.
+
 - **Light Dock** (contract in `DOCK-PROTOCOL.md`, mirrored verbatim with the
   [Scottina-Light](https://github.com/scottmclesly/Scottina-Light) firmware
   repo; shared conformance asset `To-DoLists/dock-vectors.json`):

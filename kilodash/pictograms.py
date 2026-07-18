@@ -248,6 +248,19 @@ def _microkvm(d, cx, cy, r, c):
     d.line((cx + r * 0.6, cy + r * 0.75, cx + r * 0.95, cy + r * 0.75), fill=c, width=lw)
 
 
+def _gps(d, cx, cy, r, c):
+    """Sky plot in miniature: horizon ring, elevation ring, crosshair and
+    a couple of satellite dots — the across-the-room fix indicator."""
+    lw = _lw(r)
+    _circle(d, cx, cy, r * 0.95, c, lw)
+    _circle(d, cx, cy, r * 0.5, c, max(1, lw - 1))
+    d.line((cx - r * 0.95, cy, cx + r * 0.95, cy), fill=c, width=1)
+    d.line((cx, cy - r * 0.95, cx, cy + r * 0.95), fill=c, width=1)
+    _dot(d, *_pt(cx, cy, r * 0.72, 305), r * 0.13, c)
+    _dot(d, *_pt(cx, cy, r * 0.30, 160), r * 0.13, c)
+    _dot(d, *_pt(cx, cy, r * 0.78, 60), r * 0.13, c)
+
+
 def _settings(d, cx, cy, r, c):
     """Maintenance: ring with radial adjustment ticks."""
     lw = _lw(r)
@@ -276,6 +289,7 @@ _GLYPHS = {
     "pomodoro": _pomodoro,
     "health": _health,
     "microkvm": _microkvm,
+    "gps": _gps,
     "settings": _settings,
 }
 

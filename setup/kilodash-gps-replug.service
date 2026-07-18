@@ -1,0 +1,10 @@
+[Unit]
+Description=kilodash GPS hotplug hook — (re)start gpsd against a fresh module
+# Started by udev (ENV{SYSTEMD_WANTS} on the /dev/gps0 rule) on every plug
+# event. With no backup battery on the PA1616S, a replugged module is back
+# at 9600 factory defaults — restarting gpsd re-runs the ExecStartPre
+# module configuration (gps/pa1616s.py) before gpsd reopens the port.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl restart gpsd.service

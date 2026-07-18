@@ -20,10 +20,19 @@ lines to /opt/kilodash/captures/.
 RX-only, diagnostics only: this screen opens its own SocketCAN socket on
 the CAN iface while active (no shared RX daemon; one tile at a time) and
 never transmits — tests/test_n2k.py enforces it with the same AST scan as
-the CAN screen. While the CanTick WiFi bridge is enabled this screen hosts
-the supervised link too (a CanTick needs a listener whichever tile is up);
-provisioning, heartbeat health and the fallback AP stay on the CAN screen.
-No tables → the tile stays visible and points at the Tables tile.
+the CAN screen. The ONE transmit affordance in the whole UI lives here as
+a *control*, not a TX path: the "Source GNSS → bus" button starts/stops
+`n2k/node.py` (the allow-listed GNSS source node — address claim, claim
+defense, ISO-request replies and five GNSS PGNs from live gpsd). The node
+owns its own socket; this module still constructs no TX. While sourcing,
+our own PGNs echo back into the decode view and are tagged with ▸ (own
+claimed SA) — self-traffic verifies our TX but must never be mistaken for
+the boat's GPS, and the GPS-vs-bus comparison excludes it.
+
+While the CanTick WiFi bridge is enabled this screen hosts the supervised
+link too (a CanTick needs a listener whichever tile is up); provisioning,
+heartbeat health and the fallback AP stay on the CAN screen. No tables →
+the tile stays visible and points at the Tables tile.
 """
 
 import os
@@ -36,8 +45,10 @@ from ..widgets import Button, Keyboard, rrect
 from .base import Screen, HEADER_H
 from .canbus import _can_iface
 
-# the table store lives at the repo root (TABLES.md §1); run.py and the
-# tests both put the repo root on sys.path
+# repo-root packages (TABLES.md §1 / GPS.md §5 / n2k package docstring);
+# run.py and the tests both put the repo root on sys.path
+from gps import snapshot as gps_snapshot
+from n2k import node as gnss
 from tables import store
 
 CAP_DIR = "/opt/kilodash/captures"
@@ -86,6 +97,52 @@ class N2kScreen(Screen):
         self._sig = None
         self._btns = {}
         self._vis = []
+
+    # ------------------------------------------------------------- GNSS node
+    # The node object outlives this screen deliberately (a bus participant
+    # doesn't vanish when the user switches tiles): it hangs off the app and
+    # only an explicit stop tap, fix loss (auto-stop) or socket death ends
+    # TX. This screen only starts/stops/renders it — n2k/node.py owns the
+    # socket and is the sole TX-allow-listed module (tests/test_txscan.py).
+    def _node(self):
+        return getattr(self.app, "gnss_node", None)
+
+    def _node_state(self):
+        node = self._node()
+        return node.state if node else gnss.OFF
+
+    def _own_sa(self):
+        """Our claimed SA while the node holds one — for ▸ self-tagging
+        and for excluding self-traffic from the GPS-vs-bus comparison."""
+        node = self._node()
+        if node and node.state in (gnss.CLAIMING, gnss.ACTIVE,
+                                   gnss.STOPPED_FIX):
+            return node.sa
+        return None
+
+    def _gnss_eligible(self):
+        """Button appears only with the GPS jack occupied AND a current
+        fix in the snapshot (GPS.md §3 staleness rule does the honesty)."""
+        if not os.path.exists("/dev/gps0"):
+            return False
+        snap, _reason = gps_snapshot.read_position()
+        return snap is not None
+
+    def _toggle_gnss(self):
+        node = self._node()
+        if node:
+            node.stop()
+            self.app.gnss_node = None
+            self.app.toast("GNSS source stopped — going silent")
+            return
+        if not self.iface:
+            self.app.toast("No CAN iface to source onto")
+            return
+        if not self._gnss_eligible():
+            self.app.toast("No GPS fix — a node never sources stale data")
+            return
+        self.app.gnss_node = gnss.GnssSourceNode(self.iface).start()
+        self.app.toast("Source GNSS → bus: claiming address…")
 
     # --------------------------------------------------------------- lifecycle
     def _pick_iface(self):
@@ -188,10 +245,19 @@ class N2kScreen(Screen):
             return False
         self._ensure_reader()
         self._rows, self._unknown, self._stats = self.mon.snapshot()
+        node = self._node()
+        if node and node.error:
+            self.status = f"GNSS: {node.error}"[:34]
+        elif node:
+            sa = self._own_sa()
+            self.status = f"GNSS {node.state}" + (
+                f" @SA={sa:02X}" if sa is not None
+                and node.state == gnss.ACTIVE else "")
         sig = (self._stats["total"], self._stats["hits"],
                self._stats["alerting"], self._stats["unknown"],
                len(self._rows),
-               self.reader.error if self.reader else None)
+               self.reader.error if self.reader else None,
+               self._node_state(), self._own_sa(), self._gnss_eligible())
         moved = sig != self._sig
         self.tick_interval = FAST_TICK if moved else IDLE_TICK
         if moved:
@@ -289,19 +355,28 @@ class N2kScreen(Screen):
         sd = ImageDraw.Draw(surf)
         fn = T.font(14, bold=True)
         fs = T.font(11, mono=True)
+        own_sa = self._own_sa()
         for i, r in enumerate(rows):
             y = i * ROW_H
             box = (14, y + 1, w - 14, y + ROW_H - 1)
+            ours = own_sa is not None and r["src"] == own_sa
             if r["alert"]:
                 rrect(sd, box, 8, fill=th.card_hi, outline=th.warn, width=2)
+            elif ours:
+                # bus echo of our own sourced PGNs: signal for verifying
+                # our TX, but never mistakable for the boat's GPS
+                rrect(sd, box, 8, fill=th.card, outline=th.accent, width=1)
             else:
                 rrect(sd, box, 8, fill=th.card)
-            sd.text((24, y + 4), r["name"][:24], font=fn, fill=th.fg)
+            name = ("▸" + r["name"]) if ours else r["name"]
+            sd.text((24, y + 4), name[:24], font=fn,
+                    fill=th.accent if ours else th.fg)
             rate = f"{r['rate']:4.0f}/s"
             sd.text((w - 24 - sd.textlength(rate, font=fs), y + 6), rate,
                     font=fs, fill=th.muted)
             vals = ", ".join(fl["disp"] for fl in r["fields"][:3])
-            sub = f"{r['pgn']} s{r['src']:02X}  {vals}"
+            who = "self" if ours else f"s{r['src']:02X}"
+            sub = f"{r['pgn']} {who}  {vals}"
             sd.text((24, y + 22), sub[:44], font=fs, fill=th.muted)
         self.paste_list(LIST_TOP, pane_h, surf)
 
@@ -354,20 +429,59 @@ class N2kScreen(Screen):
         cb.draw(d, th)
         self._btns["close"] = cb.box
 
+    def _delta_banner(self):
+        """GPS-vs-bus comparison for the selected row (Phase 4): only for
+        OTHER sources (self-comparison would validate our TX against its
+        own origin) and only with a fresh local fix. Returns (text,
+        severity_key) or None."""
+        pgn, src = self.sel
+        own = self._own_sa()
+        if own is not None and src == own:
+            return None
+        r = self._sel_row()
+        if not r:
+            return None
+        snap, _reason = gps_snapshot.read_position()
+        if snap is None:
+            return None
+        delta = n2k.gps_bus_delta(r["fields"], snap)
+        if not delta:
+            return None
+        parts = []
+        if "dist_m" in delta:
+            parts.append(f"Δpos {delta['dist_m']:,.0f} m")
+        if "d_sog_mps" in delta:
+            parts.append(f"ΔSOG {delta['d_sog_mps']:+.1f} m/s")
+        if "d_cog_deg" in delta:
+            parts.append(f"ΔCOG {delta['d_cog_deg']:+.0f}°")
+        return "vs local GPS: " + "  ".join(parts), n2k.delta_severity(delta)
+
     def _draw_fields_pane(self, d, th, w):
         pane_h = self.content_area()[3]
         r = self._sel_row()
         fields = r["fields"] if r else []
         self._vis = fields
-        self.content_h = max(len(fields) * FROW_H + 4, pane_h)
+        banner = self._delta_banner()
+        self._has_banner = banner is not None
+        n_rows = len(fields) + bool(banner)
+        self.content_h = max(n_rows * FROW_H + 4, pane_h)
         surf = Image.new("RGB", (w, self.content_h), th.bg)
         sd = ImageDraw.Draw(surf)
         fn = T.font(13)
         fv = T.font(13, bold=True, mono=True)
         fs = T.font(10, mono=True)
         pgn = self.sel[0]
+        y_off = 0
+        if banner:
+            text, sev = banner
+            color = {"ok": th.ok, "warn": th.warn, "bad": th.bad}[sev]
+            rrect(sd, (14, 1, w - 14, FROW_H - 1), 6,
+                  fill=th.card_hi, outline=color, width=2)
+            sd.text((24, 7), text[:40], font=T.font(12, bold=True),
+                    fill=color)
+            y_off = FROW_H
         for i, fl in enumerate(fields):
-            y = i * FROW_H
+            y = y_off + i * FROW_H
             watch = self.alerts.ranges.get((pgn, fl["name"]))
             rrect(sd, (14, y + 1, w - 14, y + FROW_H - 1), 6,
                   fill=th.card_hi if watch else th.card)
@@ -410,6 +524,22 @@ class N2kScreen(Screen):
         b.enabled = not busy and self._stats["log"] > 0
         b.draw(d, th)
         self._btns["save"] = b.box if b.enabled else None
+        state = self._node_state()
+        if state != gnss.OFF or self._gnss_eligible():
+            # the one TX affordance in the UI — unmistakable label, and a
+            # bus action, so it lives on the bus screen (not the GPS tile)
+            label, kind = {
+                gnss.OFF: ("Source GNSS → bus", "primary"),
+                gnss.CLAIMING: ("GNSS: claiming…", "normal"),
+                gnss.ACTIVE: ("GNSS ■ stop", "danger"),
+                gnss.CANNOT_CLAIM: ("GNSS: no address", "danger"),
+                gnss.STOPPED_FIX: ("GNSS: fix lost ■", "normal"),
+            }[state]
+            gb = Button((w // 2 + 4, y, w - 14, y + BOT_H - 6), label,
+                        kind=kind, font_size=13)
+            gb.draw(d, th)
+            self._btns["gnss"] = gb.box
+            return
         info = f"{self._stats['log']:,} rec"
         if self._stats["non_n2k"]:
             info += " · 11-bit!"
@@ -484,6 +614,7 @@ class N2kScreen(Screen):
             if area[1] <= y < area[1] + area[3]:
                 fields = self._vis
                 i = int((y - area[1] + self.scroll) // FROW_H)
+                i -= bool(getattr(self, "_has_banner", False))
                 if 0 <= i < len(fields):
                     self._ask_range(self.sel[0], fields[i]["name"])
                     return True
@@ -498,6 +629,9 @@ class N2kScreen(Screen):
             return True
         if self._in("save", x, y):
             self._save()
+            return True
+        if self._in("gnss", x, y):
+            self._toggle_gnss()
             return True
         area = self.content_area()
         if area[1] <= y < area[1] + area[3] and self._vis:
