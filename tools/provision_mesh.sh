@@ -37,11 +37,6 @@ PRESET="LONG_SLOW"
 TEL_NAME="ScotTel"          # slot 0 (primary): telemetry + pager
 CMD_NAME="ScotCmd"          # slot 1: command plane (prime + phone ONLY)
 TELEMETRY_INTERVAL=1800     # 30 min — airtime is shared and duty-limited
-# Commander quick-chat: pre-loaded command frames the Meshtastic app shows as
-# tappable chips, so the operator PICKS a command instead of typing syntax
-# (MICROKVM-PROTOCOL.md). Pipe-separated, ≤200 chars. Action verbs are here
-# too — they reply "reject disarmed" at home, which is itself informative.
-COMMANDER_CANNED="help|status|health|snap temp|tile pihealth|tile home|reboot"
 SERIAL_BAUD="BAUD_38400"
 SERIAL_RXD="${SERIAL_RXD:-13}"   # per board silk — check before wiring
 SERIAL_TXD="${SERIAL_TXD:-14}"
@@ -118,8 +113,8 @@ m() {
     echo "  -> (ble $BLE, attempt $att) $*"
     timeout 90 "$MESHTASTIC" --ble "$BLE" "$@" >"$out" 2>&1 || true
     _ble_cleanup
-    if grep -qE "Writing modified|Set |Setting canned|Complete URL|Owner|myNodeNum" "$out"; then
-      grep -E "Writing modified|Set |Setting canned|Owner" "$out" | head -6 || true
+    if grep -qE "Writing modified|Set |Complete URL|Owner|myNodeNum" "$out"; then
+      grep -E "Writing modified|Set |Owner" "$out" | head -6 || true
       rm -f "$out"; return 0
     fi
     echo "     (no success marker — radio busy/asleep? retrying)"
@@ -171,11 +166,6 @@ role_sensor() {
     warn "No --admin-key: Prime cannot govern this node over the air yet."
     warn "Get it with:  meshtastic --port <prime> --get security.public_key"
   fi
-  # Commander duty: Kate doubles as the phone's pager/commander until a
-  # dedicated commander radio exists, so load the quick-chat command set.
-  say "Commander quick-chat (tappable command chips in the app)"
-  m --set canned_message.enabled true
-  m --set-canned-message "$COMMANDER_CANNED"
 }
 
 role_companion() {
