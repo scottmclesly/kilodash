@@ -84,13 +84,24 @@ class Executor:
                          "reply": reply, "ok": ok})
         return reply
 
+    # Friendly aliases for the menu verb — a field operator reaching for the
+    # obvious thing (`?`, `menu`) gets the help, not a rejection.
+    _HELP_ALIASES = {"?", "menu"}
+
     def _dispatch(self, tokens):
         if not tokens:
             raise RejectError("unknown-verb ''")
-        verb = self.registry.get(tokens[0])
+        name = "help" if tokens[0] in self._HELP_ALIASES else tokens[0]
+        verb = self.registry.get(name)
         if verb is None:
-            raise RejectError(f"unknown-verb '{_printable(tokens[0], ECHO_MAX)}'")
+            raise RejectError(
+                f"unknown-verb '{_printable(tokens[0], ECHO_MAX)}' (send help)")
         args = tokens[1:]
+        if verb.variadic:
+            # help executes nothing — it only reads the registry to format a
+            # reply — so it skips strict arity, the arm gate, and the reject
+            # pass. Its handler does its own safe (string-only) validation.
+            return getattr(self, "_do_" + verb.func)(args, [])
         if len(args) != len(verb.args):
             raise RejectError(f"reject bad-arity want={len(verb.args)} "
                               f"got={len(args)}")
@@ -170,6 +181,34 @@ class Executor:
 
     def _do_snap(self, args, argv):
         return f"snap: {args[0]}={self._metric(args[0])}"
+
+    # ---- menu (BBS-style: list choices so nothing has to be guessed) -------
+    def _describe(self, verb):
+        cls = "read-only" if verb.klass == reg.READ_ONLY else "action"
+        head = f"{verb.name} [{cls}]" + (f" {verb.hint}" if verb.hint else "")
+        if verb.variadic:
+            return f"{head}: '{verb.name}' or '{verb.name} <verb>'"
+        if not verb.args:
+            return f"{head}: no args"
+        body = "  ".join(f"{a.name}={{{' '.join(sorted(a.domain))}}}"
+                         for a in verb.args)
+        full = f"{head}: {body}"
+        if len(full) <= REPLY_MAX:
+            return full
+        # A large domain (the tile list) crowds out the hint — keep the
+        # choices, they're the point of the menu; the hint is expendable.
+        return f"{verb.name} [{cls}]: {body}"
+
+    def _do_help(self, args, argv):
+        if not args:
+            return ("verbs: " + " ".join(self.registry)
+                    + " | send 'help <verb>' for options")
+        target = "help" if args[0] in self._HELP_ALIASES else args[0]
+        verb = self.registry.get(target)
+        if verb is None:
+            return (f"help: no verb '{_printable(args[0], ECHO_MAX)}'. "
+                    "verbs: " + " ".join(self.registry))
+        return self._describe(verb)
 
     # --------------------------------------------------------------- actions --
     def _do_tile(self, args, argv):

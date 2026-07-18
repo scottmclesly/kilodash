@@ -127,6 +127,62 @@ class TestReadOnlyVerbs(unittest.TestCase):
             self.assertLessEqual(len(reply), executor.REPLY_MAX)
 
 
+class TestHelpMenu(unittest.TestCase):
+    """BBS-style menu: list choices so syntax is never guessed. Read-only, so
+    it answers while disarmed too."""
+
+    def test_menu_lists_every_verb(self):
+        ex = make_executor(armed=False)
+        reply = ex.handle("help")
+        for verb in ("status", "health", "snap", "tile", "cap", "svc",
+                     "reboot", "help"):
+            self.assertIn(verb, reply)
+        self.assertIn("help <verb>", reply)
+
+    def test_menu_aliases(self):
+        ex = make_executor()
+        self.assertEqual(ex.handle("?"), ex.handle("help"))
+        self.assertEqual(ex.handle("menu"), ex.handle("help"))
+
+    def test_help_verb_lists_its_domain(self):
+        ex = make_executor()
+        self.assertIn("temp", ex.handle("help snap"))
+        self.assertIn("mem", ex.handle("help snap"))
+        svc = ex.handle("help svc")
+        self.assertIn("kilodash", svc)
+        self.assertIn("signalk", svc)
+        tile = ex.handle("help tile")
+        self.assertIn("nmea2k", tile)
+
+    def test_help_shows_class_and_hint(self):
+        ex = make_executor()
+        self.assertIn("read-only", ex.handle("help status"))
+        self.assertIn("action", ex.handle("help reboot"))
+
+    def test_help_unknown_verb_points_back_to_menu(self):
+        ex = make_executor()
+        reply = ex.handle("help frobnicate")
+        self.assertIn("no verb", reply)
+        self.assertIn("status", reply)      # falls back to the verb list
+
+    def test_help_answers_while_disarmed(self):
+        ex = make_executor(armed=False)
+        self.assertTrue(ex.handle("help").startswith("verbs:"))
+
+    def test_unknown_verb_suggests_help(self):
+        ex = make_executor()
+        self.assertIn("send help", ex.handle("wat"))
+
+    def test_all_help_replies_within_airtime_cap(self):
+        ex = make_executor()
+        frames = ["help", "?", "menu"] + [f"help {v}" for v in ex.registry]
+        for f in frames:
+            reply = ex.handle(f)
+            self.assertLessEqual(len(reply), executor.REPLY_MAX,
+                                 f"{f!r} -> {len(reply)} chars: {reply}")
+            self.assertNotIn("\n", reply)
+
+
 class TestActionVerbs(unittest.TestCase):
     def test_tile(self):
         ex = make_executor()
@@ -186,12 +242,13 @@ class TestRejections(unittest.TestCase):
     def test_unknown_verb(self):
         ex = make_executor()
         self.assertEqual(ex.handle("frobnicate"),
-                         "reject: unknown-verb 'frobnicate'")
+                         "reject: unknown-verb 'frobnicate' (send help)")
 
     def test_unknown_verb_echo_sanitized_and_capped(self):
         ex = make_executor()
         reply = ex.handle("x" * 100 + "\x07\x1b")
-        self.assertEqual(reply, f"reject: unknown-verb '{'x' * 24}'")
+        self.assertEqual(reply,
+                         f"reject: unknown-verb '{'x' * 24}' (send help)")
 
     def test_empty_frame(self):
         ex = make_executor()

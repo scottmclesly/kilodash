@@ -63,7 +63,7 @@ Every rejection is distinct and says *why* nothing happened:
 
 | Case | Reply |
 |---|---|
-| off-list verb | `reject: unknown-verb '<token>'` |
+| off-list verb | `reject: unknown-verb '<token>' (send help)` |
 | wrong arg count | `<verb>: reject bad-arity want=<n> got=<m>` |
 | arg outside its domain | `<verb>: reject bad-arg <name>='<token>'` |
 | action verb while disarmed | `<verb>: reject disarmed (<reason>)` |
@@ -95,6 +95,7 @@ reverse. Executable = exactly these verbs, these arities, these domains.
 
 | Verb | Args | Class | Maps to | Reply (success) |
 |---|---|---|---|---|
+| `help` (aliases `?`, `menu`) | `[verb]` | read-only | internal: reads the registry | no arg → `verbs: <list> \| send 'help <verb>' for options`; with arg → that verb's class, hint, and the enumerated options for each argument. The menu **is** the registry (auto-derived), so it can never drift from what actually executes. |
 | `status` | — | read-only | internal: uptime, SoC temp, active tile, armed, last RSSI/SNR | `status: up <t>, <temp>C, tile=<slug>, armed=<yes\|no>, rssi=<dbm>/<snr>` |
 | `health` | — | read-only | internal: service summary, disk/temp/mem headroom, armed echoed | `health: svcs <name>=<up\|down>…, disk <n>%, mem <n>%, temp <t>C, armed=<yes\|no>` |
 | `snap <metric>` | `metric` ∈ `temp mem disk load uptime wifi` | read-only | internal one-shot metric read | `snap: <metric>=<value>` |

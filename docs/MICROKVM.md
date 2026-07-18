@@ -40,6 +40,8 @@ log (every command received: sender, accept/reject reason, reply sent).
 
 | You send | You get back |
 |---|---|
+| `help` (or `?`, `menu`) | `verbs: status health snap tile cap svc reboot help \| send 'help <verb>' for options` |
+| `help tile` | `tile [action]: name={home lanscan nmea2k pihealth signalk settings …}` — the exact options you can pass |
 | `status` | `status: up 3h04m, 47.2C, tile=home, armed=yes, rssi=-104/8.5` |
 | `health` | `health: svcs kilodash=up signalk=down…, disk 21%, mem 34%, temp 47.2C, armed=yes` |
 | `snap temp` (`mem disk load uptime wifi`) | `snap: temp=47.2` |
@@ -47,6 +49,13 @@ log (every command received: sender, accept/reject reason, reply sent).
 | `cap start can` / `cap stop can` | `cap: running target=can pid=812` / `cap: stopped target=can` |
 | `svc restart signalk` (`kilodash signalk nodered kismet`) | `svc: restarted signalk state=active` |
 | `reboot` | `reboot: scheduled in 15s` (reply first, then it acts) |
+
+**Forgot the syntax?** Send `help` for the verb list, then `help <verb>`
+(e.g. `help tile`) to see exactly which options that verb accepts — the
+menu is generated from the live registry, so it always matches what the
+plane will actually run. Both are read-only, so they answer even while
+dormant at home: explore the menu before you ever go off-grid, and save
+the ones you want as canned messages.
 
 Everything is idempotent by contract: got no reply? **Send it again** —
 that's the designed recovery, never a danger. Delivery-ack (the Meshtastic

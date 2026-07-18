@@ -57,6 +57,10 @@ class Verb:
     argv: tuple = ()                          # fixed argv template, "{name}"
     #                                           placeholders filled from args
     func: str = ""                            # Executor method: _do_<func>
+    hint: str = ""                            # one-liner for the `help` menu
+    variadic: bool = False                    # skip strict arity (help only —
+    #                                           it executes nothing, just reads
+    #                                           the registry to format replies)
 
 
 def build_registry(tiles=None):
@@ -64,18 +68,25 @@ def build_registry(tiles=None):
     domain (from the launcher's screen list); everything else is static."""
     tiles = frozenset(tiles) if tiles else DEFAULT_TILES
     verbs = (
-        Verb("status", READ_ONLY, func="status"),
-        Verb("health", READ_ONLY, func="health"),
-        Verb("snap", READ_ONLY, args=(Arg("metric", METRICS),), func="snap"),
-        Verb("tile", ACTION, args=(Arg("name", tiles),), func="tile"),
+        Verb("status", READ_ONLY, func="status",
+             hint="uptime/temp/tile/armed/rssi"),
+        Verb("health", READ_ONLY, func="health",
+             hint="services + disk/mem/temp headroom"),
+        Verb("snap", READ_ONLY, args=(Arg("metric", METRICS),), func="snap",
+             hint="one metric value"),
+        Verb("tile", ACTION, args=(Arg("name", tiles),), func="tile",
+             hint="switch active screen"),
         Verb("cap", ACTION,
              args=(Arg("op", CAP_OPS), Arg("target", CAP_TARGETS)),
-             func="cap"),
+             func="cap", hint="start/stop a bounded capture"),
         Verb("svc", ACTION,
              args=(Arg("op", SVC_OPS), Arg("name", SERVICES)),
              argv=("systemctl", "restart", "{name}.service"),
-             func="svc"),
-        Verb("reboot", ACTION, argv=REBOOT_ARGV, func="reboot"),
+             func="svc", hint="restart a service"),
+        Verb("reboot", ACTION, argv=REBOOT_ARGV, func="reboot",
+             hint="safe reboot (acks first)"),
+        Verb("help", READ_ONLY, func="help", variadic=True,
+             hint="list verbs; 'help <verb>' shows its options"),
     )
     return {v.name: v for v in verbs}
 
