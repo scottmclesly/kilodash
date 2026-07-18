@@ -35,12 +35,14 @@ class TestAllowedModes(unittest.TestCase):
     def test_services(self):
         self.assertEqual(
             scan.build_scan_command("Services", "host.local"),
-            ["nmap", "-sT", "-sV", "host.local"])
+            ["nmap", "-sT", "-sV", "-p", scan.COMMON_PORTS,
+             "--host-timeout", scan.HOST_TIMEOUT, "host.local"])
 
     def test_identify(self):
         self.assertEqual(
             scan.build_scan_command("Identify", "10.0.0.1"),
-            ["nmap", "-sT", "-O", "10.0.0.1"])
+            ["nmap", "-sT", "-O", "-p", scan.COMMON_PORTS,
+             "--host-timeout", scan.HOST_TIMEOUT, "10.0.0.1"])
 
     def test_never_a_shell_string(self):
         cmd = scan.build_scan_command("Services", "192.168.1.5")

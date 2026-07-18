@@ -23,10 +23,17 @@ import threading
 # The four — and only — allowed modes. This tuple IS the safety boundary.
 MODES = ("Discover", "Ports", "Services", "Identify")
 
-# Curated common-port list used when the Ports field is left blank. A small,
-# familiar set — not an exhaustive sweep.
+# Curated common-port list used when the Ports field is left blank, and the
+# fixed set Services/Identify probe. A small, familiar set — not an exhaustive
+# sweep. Bounding Services/Identify to these ports (instead of nmap's default
+# top-1000) is what makes them actually complete on a Pi over a /24 subnet
+# rather than grinding for minutes.
 COMMON_PORTS = ("21,22,23,25,53,80,110,111,135,139,143,161,443,445,"
                 "993,995,1723,3306,3389,5900,8080")
+
+# Per-host ceiling for the heavier Services/Identify scans so one unresponsive
+# host on a subnet can't stall the whole sweep. Not an offensive/evasion knob.
+HOST_TIMEOUT = "60s"
 
 # Offensive/evasion flags the builder must never emit and must actively refuse.
 # NSE (--script / -sC) is the top priority: it is nmap's primary offensive
@@ -98,10 +105,13 @@ def build_scan_command(mode, target, ports=None):
     flag set. Raises ScanError on a bad mode/target/ports or if any offensive
     flag would be present.
 
-    Discover  -> -sn            (host discovery, no port scan)
-    Ports     -> -sT -p <list> (TCP connect scan; curated ports if blank)
-    Services  -> -sT -sV        (service/version detection over a connect scan)
-    Identify  -> -sT -O         (OS detection; needs root — see ScanJob)
+    Discover  -> -sn                                   (host discovery, no port scan)
+    Ports     -> -sT -p <list>                         (TCP connect scan; curated ports if blank)
+    Services  -> -sT -sV -p <common> --host-timeout    (version detection, bounded)
+    Identify  -> -sT -O  -p <common> --host-timeout    (OS detection; needs root — see ScanJob)
+
+    Services/Identify are pinned to COMMON_PORTS and a per-host timeout so they
+    return within seconds per host instead of sweeping nmap's default top-1000.
     """
     if mode not in MODES:
         raise ScanError(f"unknown mode: {mode!r}")
@@ -118,9 +128,9 @@ def build_scan_command(mode, target, ports=None):
             raise ScanError(f"invalid ports: {ports!r}")
         args += ["-sT", "-p", p]
     elif mode == "Services":
-        args += ["-sT", "-sV"]
+        args += ["-sT", "-sV", "-p", COMMON_PORTS, "--host-timeout", HOST_TIMEOUT]
     elif mode == "Identify":
-        args += ["-sT", "-O"]
+        args += ["-sT", "-O", "-p", COMMON_PORTS, "--host-timeout", HOST_TIMEOUT]
 
     # Default to -sT (connect scan) everywhere except Discover so unprivileged
     # operation works. The validated target goes last; it can never start with
@@ -196,6 +206,7 @@ class ScanJob:
     def __init__(self, mode, target, ports=None):
         self.mode = mode
         self.lines = []
+        self.hosts = []          # structured {ip, host, up, mac, ports, info}
         self.host_count = 0
         self.done = False
         self.error = None
@@ -204,6 +215,7 @@ class ScanJob:
         self._proc = None
         self._stopped = False
         self._cur = None
+        self._curhost = None
 
         try:
             self.cmd = build_scan_command(mode, target, ports)
@@ -247,6 +259,12 @@ class ScanJob:
         """Thread-safe copy of the current lines for rendering."""
         with self._lock:
             return list(self.lines)
+
+    def hosts_snapshot(self):
+        """Thread-safe shallow copy of the structured host list for card
+        rendering. Each entry is {ip, host, up, mac, ports, info}."""
+        with self._lock:
+            return [dict(h) for h in self.hosts]
 
     def _run(self):
         try:
@@ -293,23 +311,49 @@ class ScanJob:
             ip, host = _report_target(m.group(1).strip())
             self.host_count += 1
             self._cur = ip
+            self._curhost = {"ip": ip, "host": host, "up": True,
+                             "mac": "", "vendor": "", "ports": [], "info": []}
+            with self._lock:
+                self.hosts.append(self._curhost)
             label = f"{ip}  {host}".strip()
             self._add(0, label, "accent")
             return
+        h = self._curhost
         if line.startswith("Host is up"):
             self._add(1, "up", "ok")
         elif line.startswith("Host seems down"):
+            if h is not None:
+                h["up"] = False
             self._add(1, "down", "muted")
         elif line.startswith("MAC Address:"):
-            self._add(1, line.replace("MAC Address: ", "MAC ", 1), "muted")
-        elif line.startswith(("OS details:", "Running:", "Aggressive OS")):
+            mac = line.replace("MAC Address: ", "", 1).strip()
+            if h is not None:
+                h["mac"] = mac
+                vm = re.search(r"\(([^)]+)\)\s*$", mac)   # "…FF (Raspberry Pi Foundation)"
+                h["vendor"] = vm.group(1) if vm else ""
+            self._add(1, "MAC " + mac, "muted")
+        elif line.startswith(("OS details:", "Running:", "Device type:",
+                              "OS CPE:", "Aggressive OS")):
+            if h is not None:
+                h["info"].append(line.strip())
             self._add(1, line.strip()[:60], "muted")
+        elif (line.startswith(("No OS matches", "Too many fingerprints"))
+              or "OSScan results may be unreliable" in line):
+            # Identify tried and couldn't fingerprint — say so, so it's clearly
+            # distinct from a plain port list rather than looking like nothing.
+            if h is not None and "OS: no confident match" not in h["info"]:
+                h["info"].append("OS: no confident match")
+            self._add(1, "OS: no confident match", "warn")
         else:
             pm = _PORT_RE.match(line)
             if pm:
                 port, proto, state = pm.group(1), pm.group(2), pm.group(3)
                 svc = pm.group(4)
                 ver = (pm.group(5) or "").strip()
+                if h is not None:
+                    h["ports"].append({"port": int(port), "proto": proto,
+                                       "state": state, "service": svc,
+                                       "version": ver})
                 txt = f"{port}/{proto}  {state}  {svc}"
                 if ver:
                     txt += f"  {ver}"

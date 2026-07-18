@@ -140,6 +140,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   full up/restore cycle). CAN screen gains a CanTick source chip, a
   heartbeat health card, and a Provision button when a CanTick is on USB.
 
+### Changed
+
+- **LAN Scan tile refactor** (`kilodash/screens/lan.py`, `kilodash/scan.py`):
+  - **Discover** now renders one tappable card per host instead of cramped
+    text rows: the card frame is colour-coded up (green) / down (red), line 1
+    carries the IP (accent) and MAC (muted) with colour separation, and line 2
+    is the identity: reverse-DNS name, else the MAC **vendor** (e.g. "Raspberry
+    Pi Foundation"), else "(unknown host)". Tapping a card selects it as the
+    port-scan target — its IP prepopulates the target field and the view jumps
+    to **Ports**; switching back to **Discover** restores the local subnet CIDR.
+    `scan.ScanJob` now exposes structured `hosts` (via `hosts_snapshot()`,
+    including `vendor`) alongside the streamed text lines.
+  - The "Complete · N host(s)" status line and the host-count badge are gone;
+    the found-host count is shown on the **Run** button once a scan completes.
+  - **Ports** mode gives the ports field the entire width (no more overlap with
+    the host badge), showing just the port list (the field is tappable).
+  - **Ports / Services / Identify** results are now structured, not raw text: a
+    single-host scan is a flat, un-indented port list (no IP header, no "up"
+    line); a multi-host scan reuses the Discover card pattern, one card per host
+    with its ports/OS info listed inside. Identify surfaces "OS: no confident
+    match" when `-O` can't fingerprint, so it reads as distinct from a bare
+    port scan.
+- **Services / Identify now actually return on a subnet.** Both were sweeping
+  nmap's default top-1000 ports per host, which ground for minutes on a `/24`
+  and looked like they did nothing. They are now pinned to `COMMON_PORTS` with
+  a per-host `--host-timeout` (`scan.HOST_TIMEOUT`) so each host completes in
+  seconds. (Identify still needs root for `-O`; the service runs as root.)
+
 ## [1.0.0] — 2026-07-05
 
 First release. **Scottina** — the digital Swiss Army knife for hardware
