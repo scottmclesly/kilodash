@@ -26,6 +26,17 @@ log = logging.getLogger("microkvm.link")
 RECONNECT_MIN_S = 5          # backoff floor after a BLE drop
 RECONNECT_MAX_S = 120        # ...and ceiling (duty discipline: no storms)
 LIVENESS_S = 15              # poll the kernel's view of the connection
+HEARTBEAT_S = 60             # keep a quiet BLE link warm (and let a truly
+#                              dead one surface as a lost connection)
+STALE_RX_S = 180             # no inbound packet for this long on a BlueZ-
+#                              "connected" link ⇒ half-open, force reconnect.
+#                              Measured cadence on a dead-quiet link is a steady
+#                              60 s (each HEARTBEAT_S prompts a telemetry
+#                              response), so 180 s tolerates two consecutive
+#                              misses before acting — a 3× margin that never
+#                              false-trips, yet self-heals the notifications-
+#                              dead-but-connected state (which BlueZ cannot see)
+#                              within ~3 min offshore. Bench fact 2026-07-17.
 TEXT_PORTNUM = "TEXT_MESSAGE_APP"
 
 
@@ -71,8 +82,15 @@ class MeshLink:
         self.dropped = 0                          # frames refused by gating
         self._iface = None
         self._command_index = None
+        self._last_rx = 0.0                       # monotonic; data-plane clock
         self._stop = threading.Event()
         self._thread = None
+
+    def rx_age(self):
+        """Seconds since the last inbound packet, or None if never/not up."""
+        if self.state != "up" or not self._last_rx:
+            return None
+        return time.monotonic() - self._last_rx
 
     # ---------------------------------------------------------- executor fn --
     def link_info(self):
@@ -162,37 +180,65 @@ class MeshLink:
         disconnected = threading.Event()
 
         def on_receive(packet, interface=None):
+            # EVERY inbound packet (not just text) refreshes the data-plane
+            # liveness clock — this is what distinguishes a healthy-but-quiet
+            # link from a half-open one that BlueZ still calls "connected".
+            self._last_rx = time.monotonic()
             try:
-                self._handle_packet(packet)
+                d = (packet or {}).get("decoded") or {}
+                if d.get("portnum") == TEXT_PORTNUM:
+                    self._handle_packet(packet)
             except Exception:                        # noqa: BLE001
                 log.exception("rx handler")
 
         def on_disconnect(interface=None):
             disconnected.set()
 
-        pub.subscribe(on_receive, "meshtastic.receive.text")
+        pub.subscribe(on_receive, "meshtastic.receive")
         pub.subscribe(on_disconnect, "meshtastic.connection.lost")
         try:
             self._iface = BLEInterface(self.ble_address)
             self._command_index = self._find_channel_index()
+            self._last_rx = time.monotonic()
             self._set_state("up", f"ch[{self._command_index}]="
                                   f"{self.channel_name}")
-            # The connection.lost pubsub does NOT fire when the link is
-            # stolen (another client grabbing the node's single BLE slot,
-            # bench fact 2026-07-16) — so don't trust the callback alone:
-            # poll BlueZ's view of the connection as ground truth.
-            last_probe = time.monotonic()
+            # Three independent liveness signals, because each alone has a
+            # blind spot (all bench facts, 2026-07-16/17):
+            #   - connection.lost pubsub: misses a stolen slot;
+            #   - BlueZ "Connected: yes": misses a half-open link (notifications
+            #     dead but the ACL still up);
+            #   - data-plane rx clock: catches the half-open case the other two
+            #     miss. A periodic heartbeat keeps a quiet link's rx fresh so
+            #     this never false-trips.
+            last_probe = last_hb = time.monotonic()
             while not self._stop.is_set() and not disconnected.is_set():
                 time.sleep(0.5)
-                if time.monotonic() - last_probe >= LIVENESS_S:
-                    last_probe = time.monotonic()
+                now = time.monotonic()
+                if now - last_hb >= HEARTBEAT_S:
+                    last_hb = now
+                    # guarded: sendHeartbeat can hang on a dead link, so it
+                    # must never run on the loop thread (same close() hazard).
+                    threading.Thread(target=self._heartbeat, daemon=True,
+                                     name="microkvm-ble-hb").start()
+                if now - last_probe >= LIVENESS_S:
+                    last_probe = now
                     if not self._ble_connected():
-                        raise ConnectionError("BLE link lost (liveness probe)")
+                        raise ConnectionError("BLE link lost (bluez)")
+                    stale = now - self._last_rx
+                    if stale > STALE_RX_S:
+                        raise ConnectionError(
+                            f"no rx for {int(stale)}s (half-open)")
             if disconnected.is_set():
                 raise ConnectionError("BLE link lost")
         finally:
-            pub.unsubscribe(on_receive, "meshtastic.receive.text")
+            pub.unsubscribe(on_receive, "meshtastic.receive")
             pub.unsubscribe(on_disconnect, "meshtastic.connection.lost")
+
+    def _heartbeat(self):
+        try:
+            self._iface.sendHeartbeat()
+        except Exception:                            # noqa: BLE001
+            pass
 
     def _ble_connected(self):
         """BlueZ's ground truth on the connection; errs on 'alive' so a

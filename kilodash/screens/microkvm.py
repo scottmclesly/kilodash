@@ -81,7 +81,10 @@ class MicroKvmScreen(Screen):
         tw = d.textlength(rt.link.state.upper(), font=f)
         d.text((w - 26 - tw, y + 6), rt.link.state.upper(), font=f, fill=lcol)
         heard = rt.link.last_heard or "-"
-        d.text((26, y + 32), f"last heard {heard}   dropped {rt.link.dropped}",
+        age = rt.link.rx_age()
+        rx = f"rx {int(age)}s ago" if age is not None else "rx --"
+        d.text((26, y + 32),
+               f"last heard {heard}   {rx}   dropped {rt.link.dropped}",
                font=T.font(13, mono=True), fill=th.muted)
         y += 66
 
