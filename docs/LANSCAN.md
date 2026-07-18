@@ -5,7 +5,7 @@ or a memorised `nmap` incantation: *what's alive on my subnet, what services do
 those hosts run, and is an expected port open on a known host.* It is
 **diagnostics-only by construction** — there is no raw-flag input, so no
 offensive scan can be expressed from this screen (see
-[Why it stays diagnostics-only](#why-it-stays-diagnostics-only)).
+[Why it stays diagnostics-only](#why-it-stays-diagnostics-only-the-safety-model)).
 
 It's always on the Home screen (built-in, no dongle required).
 
@@ -47,18 +47,28 @@ Target the host's IP, mode **Ports**, Ports field `22`, Run.
 Target the IP, mode **Services**, Run — you get service names and versions per
 open port.
 
-## Why it stays diagnostics-only
+## Why it stays diagnostics-only (the safety model)
 
-Every command is assembled from the **mode + validated target + validated
-ports** into an argument array — never a shell string, so there is nothing to
-inject into. The UI has no free-text flag entry, and a defense-in-depth
-reject-list refuses NSE scripting (`--script`, `-sC`), stealth/evasion scans
-(`-sS`, `-sF`, `-sX`, `-sN`), aggressive mode (`-A`), decoys/spoofing (`-D`,
-`-S`, `--spoof-mac`), fragmentation (`-f`, `--mtu`, `--data-length`) and
-evasion timing (`-T4`, `-T5`) even if a value somehow arrived from elsewhere.
+Every command is assembled by `scan.py` from a discrete intent — **mode +
+validated target + validated ports** — into an **argument array**, never a
+shell string, so there is nothing to inject into. The four modes are the
+*entire* attack surface; the UI has no raw-flag input. On top of that,
+`scan._enforce_rejects` is defense in depth: even if a value arrived from
+elsewhere, the assembled command is refused if it contains any of these.
+**Do not "helpfully" re-add them** — they exist to keep this a diagnostics tool:
 
-The full rationale (and the tests that prove each mode's exact arguments) is in
-the main README's [LAN Scan safety model](../README.md#lan-scan-safety-model-why-the-rejected-flags-stay-rejected).
+| Flag(s) | Why blocked |
+|---|---|
+| `--script`, `-sC` | NSE — nmap's offensive scripting subsystem (vuln/exploit probes). Top priority to keep unreachable. |
+| `-sS`, `-sF`, `-sX`, `-sN` | Stealth / half-open / evasion scans meant to slip past monitoring. |
+| `-A` | Aggressive — bundles NSE, OS detection and traceroute. |
+| `-D`, `-S`, `--spoof-mac` | Decoys and identity spoofing. |
+| `-f`, `--mtu`, `--data-length` | Packet fragmentation / padding for firewall evasion. |
+| `-T4`, `-T5` | Evasion-tuned aggressive timing. |
+
+Tests in `tests/` prove each mode's exact arg array and that every flag above is
+refused (`python -m unittest discover -s tests`). Full task list:
+[`../To-DoLists/LAN-Scan-Refactor-TODO.md`](../To-DoLists/LAN-Scan-Refactor-TODO.md).
 
 ## Troubleshooting
 

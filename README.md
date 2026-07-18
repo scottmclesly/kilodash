@@ -108,23 +108,32 @@ of the original config is saved next to it as `config.txt.kilodash-bak.*`.
 
 ## Install
 
+From a fresh Kali Pi 5 image, clone the repo and run the base installer — it
+handles apt deps, the tree at `/opt/kilodash`, the SPI/DRM display overlay, and
+the systemd unit, and is safe to re-run:
+
+```bash
+sudo setup/install.sh
+sudo reboot        # only needed the first time, for the display overlay
+```
+
+That gets you the booting dashboard with every built-in screen. The optional
+backends (web apps, logic analyzer, GPS, tables, micro KVM) are separate phase
+scripts. **Full walkthrough — base install, the reboot note, and each optional
+phase — is in [docs/INSTALL.md](docs/INSTALL.md).**
+
+Runs as root (needs `/dev/fb0`, evdev, `nmcli`, and `arp-scan`'s raw sockets).
+Core dependencies: `python3-pil`, `python3-numpy`, `python3-evdev`, plus
+`nmcli`, `arp-scan`, and `vcgencmd`. `python3-pygame` is **not** used.
+
+If the tree is already unpacked at `/opt/kilodash` and you only want the
+service, that's the last three steps of the installer by hand:
+
 ```bash
 sudo cp /opt/kilodash/kilodash.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now kilodash
 ```
-
-Runs as root (needs `/dev/fb0`, evdev, `nmcli`, and `arp-scan`'s raw sockets).
-
-Core dependencies (already present on this build): `python3-pil`,
-`python3-numpy`, `python3-evdev`, plus `nmcli`, `arp-scan`, and `vcgencmd`.
-`python3-pygame` is **not** used. The web-app backends (Node-RED, AIS-catcher,
-Signal K) and the SDR/Wi-Fi tools install separately — see
-[Web-app launch terminal](#web-app-launch-terminal) and
-[`setup/install-phase4.sh`](setup/install-phase4.sh). The logic-analyzer
-stack (sigrok-cli + fx2lafw firmware + udev/group setup) installs with
-[`setup/install-logic-analyzer.sh`](setup/install-logic-analyzer.sh) —
-usage guide in [docs/LOGICANALISER.md](docs/LOGICANALISER.md).
 
 ## Using it
 
@@ -175,10 +184,10 @@ plugged in** (hotplug, see `devices.py`) and carry a small green "live" badge.
 | **GPS** | PA1616S @ `/dev/gps0` (port 1-1) | **Time authority, geotag snapshots, sky plot, N2K GNSS source.** Adafruit Ultimate GPS on the PL2303 dongle udev-pinned to USB port 1-1 (*the GPS jack* — the dongle has no serial number, so the physical port IS the identity). Ecosystem plumbing first, tile second: **gpsd + chrony** make the box a disconnected time authority (serial-only, no PPS — tens-of-ms honesty), the **position snapshot contract** ([GPS.md](GPS.md)) geotags capture artifacts, and the tile shows a phosphor **sky plot** (per-sat az/el/SNR, used vs visible) over fix/HDOP/position/UTC and the chrony *"am I the time authority right now"* line. The **Source GNSS → bus** button lives on the NMEA2K tile (it's a bus action). Install with [`setup/install-gps.sh`](setup/install-gps.sh). |
 | **I2C Scan** | onboard i2c-1 | `i2cdetect` on the Pi's bus with best-guess names for responding addresses. User guide: [docs/I2C-SERIAL.md](docs/I2C-SERIAL.md#i2c-scan). |
 | **Serial** | FTDI / CP210x / CH340 | Lists USB-serial ports and gives a read-only live view of one at a chosen baud — handy for sniffing UART/debug output. User guide: [docs/I2C-SERIAL.md](docs/I2C-SERIAL.md#serial). |
-| **Logic** | FX2LP (CY7C68013A) | Passive multi-channel digital capture + protocol decode (UART/I2C/SPI/CAN) via the packaged `sigrok-cli`/fx2lafw stack: 8 channels, up to 24 MHz, edge trigger, decoded annotations + per-channel activity strips. Every capture persists to `/opt/kilodash/captures/*.sr` for PulseView on a laptop. Install with [`setup/install-logic-analyzer.sh`](setup/install-logic-analyzer.sh); full user guide: [docs/LOGICANALISER.md](docs/LOGICANALISER.md). **3.3 V logic only** — the bare board has no input protection; series resistor / buffer / divider before probing anything near Scottina's 12 V wiring. |
+| **Logic** | FX2LP (CY7C68013A) | Passive multi-channel digital capture + protocol decode (UART/I2C/SPI/CAN) via the packaged `sigrok-cli`/fx2lafw stack: 8 channels, up to 24 MHz, edge trigger, decoded annotations + per-channel activity strips. Every capture persists to `/opt/kilodash/captures/*.sr` for PulseView on a laptop. Install with [`setup/install-logic-analyzer.sh`](setup/install-logic-analyzer.sh); full user guide: [docs/LOGICANALYZER.md](docs/LOGICANALYZER.md). **3.3 V logic only** — the bare board has no input protection; series resistor / buffer / divider before probing anything near Scottina's 12 V wiring. |
 | **Tables** | — | **Table converter service + inventory.** Always-visible remote control for the on-device converter web app (start/stop, URL **+ QR code** at the eth0-preferred address) and a mirror of the installed PGN tables (enable/disable = atomic manifest flip, remove). Conversion itself happens in a browser on a big screen: upload a vendor PDF → side-by-side review → human approval → validation → store. Contract: [TABLES.md](TABLES.md); guide: [docs/NMEA2K.md](docs/NMEA2K.md). Install with [`setup/install-tables.sh`](setup/install-tables.sh). |
 | **Files** | USB stick | **Offload logs without a laptop:** plug in any USB stick and copy captures (`candump` logs, `.sr`, IQ, sniffs) from `/opt/kilodash/captures/` onto it — one per tap or all at once — with a sync-then-**Eject** button so it's always safe to pull. Also exchanges **CAN decode tables** (DBC, NMEA2000/canboat) between the stick and `/opt/kilodash/tables/`, where decoding tools read them. Copies never delete the originals. Full user guide: [docs/FILES.md](docs/FILES.md). |
-| **Light Dock** | Scottina Light (USB) | **Auto-sync on dock:** clock push (with an honest quality label — `ntp` only while NTP is actually synchronized), decode-table push (**Prime always wins**, atomic verify-then-commit), and black-box **log pull** into `captures/light-*` — checksum-verified, deleted from Light only after proof of receipt. Two-distance screen: an across-the-room animation (pulses = syncing, the hug = done, sad face + broken cable = come look) over a session-only log of exactly what landed. Wire contract: `DOCK-PROTOCOL.md`, mirrored verbatim in [Scottina-Light](https://github.com/scottmclesly/Scottina-Light). Full user guide: [docs/LIGHTDOCK.md](docs/LIGHTDOCK.md). |
+| **Light Dock** | Scottina Light (USB) | **Auto-sync on dock:** clock push (with an honest quality label — `ntp` only while NTP is actually synchronized), decode-table push (**Prime always wins**, atomic verify-then-commit), and black-box **log pull** into `captures/light-*` — checksum-verified, deleted from Light only after proof of receipt. Two-distance screen: an across-the-room animation (pulses = syncing, the hug = done, sad face + broken cable = come look) over a session-only log of exactly what landed. Wire contract: [DOCK-PROTOCOL.md](To-DoLists/DOCK-PROTOCOL.md), mirrored verbatim in [Scottina-Light](https://github.com/scottmclesly/Scottina-Light). Full user guide: [docs/LIGHTDOCK.md](docs/LIGHTDOCK.md). |
 
 **Web-app launch terminals** (see below): **Kismet**, **Node-RED**, **AIS**,
 **Signal K**.
@@ -188,26 +197,18 @@ plugged in** (hotplug, see `devices.py`) and carry a small green "live" badge.
 <img width="1149" height="1098" alt="CanTick" src="https://github.com/user-attachments/assets/e6598eca-d1c1-4f67-84db-c1c8e83e8986" />
 
 CanTick is a small ESP32 box that clamps onto a CAN bus somewhere Scottina
-isn't, and tunnels it over WiFi. The model is deliberately boring: **it's just
-`slcan0`**. While the CAN screen is open, Scottina listens on TCP 29536; a
-CanTick dials in, `slcand` attaches the stream as a normal SocketCAN
-interface, and everything downstream — `candump`, the Node-RED SocketCAN node,
-Signal K / canboatjs for NMEA2000 — reads `slcan0` with zero
-interface-specific changes. The link is supervised: if the CanTick drops off
-WiFi, it's torn down and re-armed so the next dial-in reconnects with no
-restart. A read-only UDP heartbeat (port 29537, every 2 s) drives the health
-card at the bottom of the CAN screen: device name, mode
-(normal/listen/closed), RSSI, live rx/s, a fresh/stale badge, and a loud
-**DROP** warning when the bus starts out-running the bridge. The full contract
-is [`PROTOCOL.md`](PROTOCOL.md); scope is diagnostics + normal CAN
-participation only, and **listen-only is enforced on the device itself**.
+isn't and tunnels it over WiFi. The model is deliberately boring: **it just
+appears as an ordinary `slcan0`**, so `candump`, the Node-RED SocketCAN node,
+and Signal K / canboatjs read it with zero interface-specific changes. The link
+is supervised and re-arms on drop; a read-only UDP heartbeat drives a health
+card (device name, mode, RSSI, live rx/s, and a loud **DROP** warning when the
+bus out-runs the bridge); and **listen-only is enforced on the device itself**.
+Provisioning is a one-tap **Provision** button on the CAN screen's Setup tab
+(it never logs PSKs).
 
-**Provisioning quick-start:** plug a factory-fresh CanTick into the Pi's USB,
-open the CAN screen, tap **Provision**. Scottina pushes its *current* WiFi
-credentials (primary slot), a generated fallback-AP credential pair
-(fallback slot), the bus bitrate and the listen-only flag over the CDC serial
-port, then verifies with `GET_STATUS`. PSKs are never logged. Unplug; on next
-boot the CanTick joins the network and dials in.
+Full walkthrough — provisioning, the health card, and the off-grid AP fallback —
+is in [docs/CANBUS.md](docs/CANBUS.md#cantick--can-over-wifi); the wire contract
+is [`To-DoLists/PROTOCOL.md`](To-DoLists/PROTOCOL.md).
 
 ### Micro KVM — off-grid command plane (scope)
 
@@ -215,24 +216,17 @@ When Prime is out of SSH/web reach, a paired Meshtastic node (your phone's
 canned messages) can query it and drive a small set of diagnostic actions
 over LoRa — one text frame in, one terse reply back. No video, no shell, no
 interactive I/O. Scope, stated plainly: **this plane executes only an
-allow-listed verb set** (`microkvm/registry.py`, mirrored in
-[MICROKVM-PROTOCOL.md](To-DoLists/MICROKVM-PROTOCOL.md)), **has no shell** —
-every subprocess is a fixed `list[str]` argv with domain-enumerated tokens,
-re-checked by an independent reject pass (the `scan.py` pattern) — **and is
-inert on-network**: the executor arms only when the configured home
-gateway is unreachable (debounced), so holding the channel PSK at the bench
-commands nothing. The command channel PSK is the crypto boundary; a
-sender-node-ID allow-list narrows within it. Radio side: BLE to the Prime
-radio T3, never Prime's WiFi (that stays free for the web app). Mesh
-provisioning: [docs/LORAMESH.md](docs/LORAMESH.md).
+allow-listed verb set**, **has no shell** (every subprocess is a fixed
+`list[str]` argv with domain-enumerated tokens, re-checked by an independent
+reject pass — the `scan.py` pattern), **and is inert on-network** — the executor
+arms only when the configured home gateway is unreachable (debounced), so
+holding the channel PSK at the bench commands nothing. Radio side: BLE to the
+Prime radio T3, never Prime's WiFi (that stays free for the web app).
 
-**AP fallback:** if the Pi has *no uplink at all* when the CAN screen opens
-(off-grid diagnostics), it raises a WPA2 AP `Scottina-CanTick` on `wlan0`
-(gateway `192.168.42.1`, DHCP, `scottina.local`) so provisioned CanTicks can
-still reach it via their fallback slot. The AP is fully reversible — closing
-the screen (or the uplink returning) tears it down and hands `wlan0` back to
-NetworkManager. `wlan1`/ALFA is never touched. Needs `hostapd` + `dnsmasq`
-installed; without them the fallback simply reports itself unavailable.
+Full scope, the verb table, and every safety boundary are in
+[docs/MICROKVM.md](docs/MICROKVM.md); the wire contract is
+[`To-DoLists/MICROKVM-PROTOCOL.md`](To-DoLists/MICROKVM-PROTOCOL.md) and mesh
+provisioning is [docs/LORAMESH.md](docs/LORAMESH.md).
 
 ## Live screens & responsiveness
 
@@ -248,9 +242,8 @@ overlay, and dimming wake.
 Guardrails keep a wedged data source from spinning the CPU: the **CAN** counter
 and **Signal K** poller drop back to a slow tick automatically when no data is
 flowing. A perf overlay (FPS / frame-time) is available behind
-**Settings → System → "FPS meter"** (default off). See
-[`KioskSpeedImprovementToDo.md`](KioskSpeedImprovementToDo.md) for the measured
-before/after numbers.
+**Settings → System → "FPS meter"** (default off) for measuring the
+before/after of a change on the panel itself.
 
 ## Touch calibration
 
@@ -336,52 +329,41 @@ Adding a screen: subclass `screens.base.Screen`, implement `draw_content` and
 `handle_tap`, set a `glyph` (see `pictograms.py`), and add it to
 `screens/__init__.py::SCREENS`.
 
-### LAN Scan safety model (why the rejected flags stay rejected)
+### LAN Scan safety model
 
 `scan.py` assembles every scan command from a discrete intent (mode + validated
 target + validated ports) into an **argument array** — never a shell string, so
 there is nothing to inject into. The four modes are the *entire* attack surface;
-the UI has no raw-flag input. `scan._enforce_rejects` is defense in depth: even
-if a value arrived from elsewhere, the assembled command is refused if it
-contains any of these. **Do not "helpfully" re-add them** — they exist to keep
-this a diagnostics tool:
+the UI has no raw-flag input, and a defense-in-depth reject-list refuses NSE
+scripting, stealth/evasion scans, aggressive mode, decoys/spoofing,
+fragmentation and evasion timing even if a value somehow arrived from elsewhere.
+Tests in `tests/` prove each mode's exact arg array and that every rejected flag
+stays refused (`python -m unittest discover -s tests`).
 
-| Flag(s) | Why blocked |
-|---|---|
-| `--script`, `-sC` | NSE — nmap's offensive scripting subsystem (vuln/exploit probes). Top priority to keep unreachable. |
-| `-sS`, `-sF`, `-sX`, `-sN` | Stealth / half-open / evasion scans meant to slip past monitoring. |
-| `-A` | Aggressive — bundles NSE, OS detection and traceroute. |
-| `-D`, `-S`, `--spoof-mac` | Decoys and identity spoofing. |
-| `-f`, `--mtu`, `--data-length` | Packet fragmentation / padding for firewall evasion. |
-| `-T4`, `-T5` | Evasion-tuned aggressive timing. |
-
-Tests in `tests/` prove each mode's exact arg array and that every flag above is
-refused (`python -m unittest discover -s tests`). Full task list:
-[LAN-Scan-Refactor-TODO.md](LAN-Scan-Refactor-TODO.md).
+The flag-by-flag rationale — and the standing rule to **not "helpfully" re-add**
+any of the rejects — is in
+[docs/LANSCAN.md](docs/LANSCAN.md#why-it-stays-diagnostics-only-the-safety-model).
 
 ### CAN scope (the TX exception, stated explicitly)
 
-The CAN and NMEA2K screens are **diagnostics only. The CAN TX exception now
-covers two things, both stated explicitly: (1) heartbeat/reply behavior
-required by bus participation — the link layer's job (CanTick firmware, see
-[PROTOCOL.md](To-DoLists/PROTOCOL.md)); and (2) the GNSS source node
-(`n2k/node.py`) — ISO address claim, claim defense, ISO request responses,
-and the five GNSS PGNs (126992, 129025, 129026, 129029, 126993), started
-and stopped only by an explicit user action ("Source GNSS → bus" on the
-NMEA2K tile). No injection, replay, fuzzing, or arbitrary-frame TX is
-expressible anywhere in the UI or command builders.** Enforced in code, not
-by convention, same discipline as the LAN Scan flags:
+The CAN and NMEA2K screens are **diagnostics only**, enforced in code rather
+than by convention — same discipline as the LAN Scan flags.
 `tests/test_txscan.py` AST-scans the **whole tree** against a positive
 allow-list of TX-permitted modules (exactly one: `n2k/node.py`) — any
-send-shaped call on a socket in any other module fails the build — while
-`tests/test_busmon.py` / `tests/test_n2k.py` remain the independent reject
-pass keeping both screens and their bus models RX-only.
+send-shaped socket call anywhere else fails the build — while
+`tests/test_busmon.py` / `tests/test_n2k.py` are the independent reject pass
+keeping both screens RX-only. No injection, replay, fuzzing, or arbitrary-frame
+TX is expressible anywhere in the UI or command builders.
+
+The two-part TX exception — the bus-participation heartbeat and the
+user-triggered GNSS source node (`n2k/node.py`, five GNSS PGNs) — is spelled out
+in [docs/CANBUS.md](docs/CANBUS.md#limits-by-design).
 
 ## Roadmap
 
 Phase 2/3 (Kali pentest tooling, RTL-SDR, ALFA Wi-Fi adapter) and Phase 4 (the
-web-app launch terminal above) are tracked in [ROADMAP.md](ROADMAP.md) and
-[PHASE2.md](PHASE2.md).
+web-app launch terminal above) are tracked in
+[ROADMAP.md](To-DoLists/ROADMAP.md) and [PHASE2.md](To-DoLists/PHASE2.md).
 
 ## License
 

@@ -167,8 +167,17 @@ diagnostics + normal CAN participation only.
 - **No TX surface.** No injection, replay, fuzzing, or arbitrary-frame TX is
   expressible anywhere in the UI — the screen's socket is receive-only and
   `tests/test_busmon.py` enforces it in code (allow-list + reject pass over
-  the screen's AST). The heartbeat/reply exception lives in the link layer
-  only.
+  the screen's AST). Enforcement is tree-wide, not per-screen:
+  `tests/test_txscan.py` AST-scans the **whole repo** against a positive
+  allow-list of TX-permitted modules — exactly one, `n2k/node.py` — so a
+  send-shaped call on a socket in any other module fails the build.
+- **The system-wide TX exception, stated explicitly**, covers exactly two
+  things: (1) heartbeat/reply behavior required by bus participation, which
+  lives in the link layer (CanTick firmware / `slcand`), and (2) the GNSS
+  source node (`n2k/node.py`) — ISO address claim, claim defense, ISO request
+  responses, and five GNSS PGNs (126992, 129025, 129026, 129029, 126993),
+  started and stopped only by the explicit **Source GNSS → bus** action on the
+  [NMEA2K tile](NMEA2K.md). Nothing else on either screen can transmit.
 - **Listen-only for CanTick is enforced on the device**, not just the UI.
 - The bitrate for a `slcan`/CanTick link is fixed at attach time by `slcand`;
   the bitrate arrows apply to native `can*` interfaces.

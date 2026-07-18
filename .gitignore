@@ -1,6 +1,18 @@
 # Python
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+env/
+.env
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
 
 # Per-device runtime state (not for version control)
 config.json
@@ -14,9 +26,12 @@ mesh-secrets.env
 captures/*
 !captures/.gitkeep
 
-# Decode tables imported from USB (DBC / NMEA) — per-boat artefacts
+# Decode tables imported from USB (DBC / NMEA) — per-boat artefacts.
+# Ignore imported table data, but NEVER the converter's own source: without
+# these negations `tables/*` silently swallows new tables/*.py.
 tables/*
 !tables/.gitkeep
+!tables/*.py
 
 # Capture / log artefacts anywhere in the tree
 *.cu8
