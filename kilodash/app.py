@@ -78,6 +78,10 @@ class App:
         self.touch = Touch(self.config, self.w, self.h)
         self.devices = Devices()
         self.devices.refresh(force=True)
+        # Declared before the screens exist: open_screen() notifies the
+        # emitter, so the attribute must be readable from the moment any
+        # screen can be opened. Constructed further down.
+        self.events = None
         self.screens = [cls(self) for cls in screen_classes]
         self.launcher = self.screens[0]
         self.calibration = CalibrationScreen(self)
@@ -103,6 +107,15 @@ class App:
         # arm-gate threads live in microkvm/; the app only serves two seams:
         # the active-tile name for the status verb, and the tile-switch
         # request the main loop applies on the UI thread (never from BLE).
+        # Web mirror event emitter (WEB-PROTOCOL.md). Best-effort and
+        # optional: if the socket cannot be created the mirror is simply off
+        # and the panel is unaffected.
+        try:
+            from .eventsock import EventEmitter
+            self.events = EventEmitter(self).start()
+        except Exception as e:          # noqa: BLE001 — the mirror is optional
+            print(f"eventsock: not started ({e})")
+
         self.microkvm = None
         try:
             from microkvm.service import Runtime
@@ -233,9 +246,63 @@ class App:
         scr.on_enter()
         self.current = scr
         self.dirty = True
+        # The single nav choke point — touch, web, micro KVM and
+        # KILODASH_OPEN all land here, so the mirror sees every tile change
+        # from every surface with one hook (WEB-PROTOCOL.md §3).
+        if self.events:
+            self.events.note_tile(scr)
 
     def go_home(self):
         self.open_screen(self.launcher)
+
+    def _apply_web_command(self, cmd):
+        """Apply one WEB-PROTOCOL.md §6 action on the UI thread.
+
+        Routes through the SAME entry points as a touch event — `open_screen`,
+        `go_home`, the screen's own handler — so there is one state machine,
+        not two. Rejections are reported as an §8 `bad_command` Error rather
+        than swallowed: a web client that believes a phantom press landed
+        would drift from the box, which is the whole failure this protocol
+        exists to prevent."""
+        action = cmd.get("action")
+        if action == "tap_tile":
+            want = cmd.get("tile")
+            for scr in self.screens:
+                if scr.tile_id == want:
+                    if not scr.available():
+                        return self._reject_web(cmd, f"tile '{want}' unavailable")
+                    self._wake()
+                    self.open_screen(scr)
+                    return None
+            return self._reject_web(cmd, f"no tile '{want}'")
+        if action in ("back", "home"):
+            self._wake()
+            self.go_home()
+            return None
+        if action == "button_press":
+            bid = cmd.get("button")
+            # The ACTIVE screen's declared buttons are the authorisation
+            # surface: the box never synthesises input for a screen that is
+            # not showing, so a stale press is refused, not applied blind.
+            allowed = {b.get("id") for b in self.current.model_buttons()}
+            if bid not in allowed:
+                return self._reject_web(
+                    cmd, f"button '{bid}' not on active screen "
+                         f"'{self.current.tile_id}'")
+            self._wake()
+            if self.current.handle_button(bid):
+                self.dirty = True
+            return None
+        if action == "request_snapshot":
+            if self.events:
+                self.events.send_snapshot()
+            return None
+        return self._reject_web(cmd, f"unknown action '{action}'")
+
+    def _reject_web(self, cmd, detail):
+        if self.events:
+            self.events.send_error("bad_command", detail)
+        return None
 
     def open_named_screen(self):
         """Dev seam: KILODASH_OPEN=<tile_id> (e.g. `signal-k`) jumps straight
@@ -568,6 +635,13 @@ class App:
                     self._wake()
                     self.open_screen(scr)
 
+            # Web mirror commands (WEB-PROTOCOL.md §6): same UI thread, same
+            # entry points as a touch event. Queued off-thread by eventsock,
+            # applied here — the device cannot tell a web tap from a panel tap.
+            if self.events:
+                for cmd in self.events.take_commands():
+                    self._apply_web_command(cmd)
+
             # hotplug: if the device behind the current screen was unplugged,
             # bail back to Home so we don't sit on a dead screen.
             self.devices.refresh()
@@ -590,6 +664,13 @@ class App:
 
             if self._dirty:
                 self._render_frame()
+
+            # Web mirror emit — deliberately AFTER the blit (§7): the panel
+            # has its frame before the socket is touched, so a slow or absent
+            # subscriber can never sit inside the render budget.
+            if self.events:
+                self.events.note_model(self.current)
+                self.events.pump()
 
             # Sleep the active screen's cadence (fast screens tick ~20 Hz)
             # but never more than 50 ms, so touch stays responsive; slow

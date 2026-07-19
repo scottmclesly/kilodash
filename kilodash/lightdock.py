@@ -507,6 +507,12 @@ class LightDockSync:
         self.state = self.SYNCING
         self.events = []                # (wall_epoch, text) session-log lines
         self.progress = {"bytes_done": 0, "bytes_total": 0}
+        # Phase + peer identity, surfaced for the web mirror's `lightdock`
+        # model (WEB-PROTOCOL.md §4.5). The panel infers phase from the newest
+        # log line; the mirror needs it as a field, and `hello` already
+        # carries the device info — it was previously parsed and discarded.
+        self.phase = "idle"             # idle|hello|clock|tables|logs|done|error
+        self.info = None                # parsed HELLO: product, fw_version, …
         self.counts = {"tables_pushed": 0, "tables_skipped": 0,
                        "tables_failed": 0, "logs_pulled": 0,
                        "logs_deleted": 0, "logs_failed": 0}
@@ -528,11 +534,14 @@ class LightDockSync:
                            else self._port)
         except Exception as e:          # noqa: BLE001 — port open failed
             self._log("port open failed: %s" % e)
+            self.phase = "error"
             self.state = self.INTERRUPTED
             return self.state
         degraded = False
         try:
+            self.phase = "hello"
             info = self.client.hello()
+            self.info = info
             self._log("hello: %s %s (sd %s, max_payload %d)"
                       % (info["product"], info["fw_version"],
                          "present" if info["sd_present"] else "MISSING",
@@ -547,22 +556,27 @@ class LightDockSync:
                 self._log("Light speaks protocol v%d, Prime v%d — degraded "
                           "to clock-set only (§8)"
                           % (info["proto_version"], PROTO_VERSION))
+            self.phase = "clock"
             self._sync_clock(info)
             if degraded:
                 self._log("tables/logs not attempted (version mismatch)")
             elif not info["sd_present"]:
                 self._log("tables skipped, logs skipped — no SD in Light")
             else:
+                self.phase = "tables"
                 self._sync_tables()
                 if self.pull_logs:
+                    self.phase = "logs"
                     self._sync_logs()
                 else:
                     self._log("logs: auto-pull is off")
             self.client.bye()
             self._log("session complete")
+            self.phase = "done"
             self.state = self.COMPLETE
         except (DockError, OSError) as e:
             self._log("interrupted: %s" % e)
+            self.phase = "error"
             try:
                 self.client.bye()       # best effort; the 10 s watchdog is
             except (DockError, OSError):    # Light's real safety net (§5)

@@ -282,6 +282,60 @@ class N2kScreen(Screen):
         return (0, LIST_TOP, self.app.w,
                 self.app.h - BOT_H - 8 - LIST_TOP)
 
+
+    def model(self):
+        """WEB-PROTOCOL.md §4.4.
+
+        `sources` is DERIVED here: kilodash keeps no source table and no
+        source labels, so a source's `label` is the PGN name most recently
+        seen from that address — the best identity that actually exists.
+        The draft implied a stored source list; it does not exist. Spec
+        amendment, not an omission.
+
+        `alerting` comes from the row's own alert flag (snapshot() already
+        folded the decay window in); `armed` is a watch being configured,
+        which renders caution amber and is NOT an alert."""
+        now = time.time()
+        rows = self._rows or []
+        sources, fields = {}, []
+        for r in rows:
+            src, pgn = r.get("src"), r.get("pgn")
+            age = round(max(0.0, now - r.get("t_last", now)), 1)
+            s = sources.setdefault(src, {"src": src, "label": None,
+                                         "last_seen": age})
+            if age <= s["last_seen"]:
+                s["last_seen"], s["label"] = age, r.get("name")
+            appeared = ((pgn, None) in self.alerts.appear
+                        or (pgn, src) in self.alerts.appear)
+            for fl in r.get("fields", ()):
+                if len(fields) >= 64:
+                    break
+                rng = self.alerts.ranges.get((pgn, fl.get("name")))
+                fields.append({
+                    "pgn": pgn,
+                    "src": src,
+                    "name": fl.get("name"),
+                    "value": fl.get("value"),
+                    "unit": fl.get("units"),
+                    "disp": fl.get("disp"),
+                    "armed": bool(rng is not None or appeared),
+                    "alerting": bool(r.get("alert")),
+                    "last_seen": age,
+                })
+        st = self._stats or {}
+        r = self.reader
+        return {
+            "kind": "n2k",
+            "iface": self.iface,
+            "state": "fault" if (r and r.error and not r.alive)
+                     else ("listen" if (r and r.alive) else "standby"),
+            "sources": sorted(sources.values(), key=lambda s: s["src"]),
+            "fields": fields,
+            "pgns_loaded": len(self.tables or {}),
+            "unknown": st.get("unknown", 0),
+            "truncated": len(fields) >= 64,
+        }
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         self._btns = {}

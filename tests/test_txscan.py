@@ -34,6 +34,14 @@ ALLOWED_CAN_TX = {
 ALLOWED_NET_SEND = {
     "gps/gpsdio.py",        # one sendall(): the ?WATCH command to gpsd's
                             # localhost JSON socket (TCP, never CAN)
+    "kilodash/eventsock.py",  # web-mirror event frames on a Unix domain
+                            # socket (AF_UNIX, never AF_CAN). WEB-PROTOCOL.md
+                            # §10: the mirror adds no TX surface — see
+                            # TestWebMirrorAddsNoTxSurface below, which makes
+                            # that claim executable rather than aspirational.
+    "tools/mirror-tap.py",  # bench subscriber: reads the same Unix socket and
+                            # sends §6 commands back down it. Same AF_UNIX
+                            # justification, and covered by the same test.
 }
 
 SEND_ATTRS = {"send", "sendall", "sendto", "sendmsg", "sendfile"}
@@ -152,6 +160,58 @@ class TestScanCatches(unittest.TestCase):
         src = "def f(s):\n    s.sendall(b'?WATCH')\n"
         self.assertEqual(scan_source("gps/gpsdio.py", src), [])
         self.assertTrue(scan_source("gps/snapshotd.py", src))
+
+
+class TestWebMirrorAddsNoTxSurface(unittest.TestCase):
+    """WEB-PROTOCOL.md §10 claims a hostile actor on the LAN can navigate the
+    diagnostics UI and cannot transmit on the vehicle bus, "because no code
+    path exists that would let them". That is a safety claim, so it is tested
+    rather than trusted: the mirror is allow-listed for a Unix socket, and
+    these pin that the allowance stays exactly that narrow."""
+
+    WEB_PATH = ("kilodash/eventsock.py", "tools/mirror-tap.py")
+
+    def test_mirror_touches_no_can_constants(self):
+        """The net-send allowance is only safe while the module is not a CAN
+        module. If eventsock ever imports a CAN constant, the allowance it
+        already holds would cover a real bus transmit."""
+        for rel in self.WEB_PATH:
+            with self.subTest(module=rel):
+                with open(os.path.join(ROOT, rel)) as f:
+                    tree = ast.parse(f.read(), rel)
+                names = {n.attr for n in ast.walk(tree)
+                         if isinstance(n, ast.Attribute)}
+                names |= {n.id for n in ast.walk(tree)
+                          if isinstance(n, ast.Name)}
+                self.assertEqual(names & CAN_MARKERS, set(),
+                                 f"{rel} references a CAN constant — its "
+                                 f"send() allowance would then cover the bus")
+
+    def test_mirror_opens_only_unix_sockets(self):
+        for rel in self.WEB_PATH:
+            with self.subTest(module=rel):
+                with open(os.path.join(ROOT, rel)) as f:
+                    src = f.read()
+                self.assertIn("AF_UNIX", src)
+                for fam in ("AF_CAN", "AF_INET", "AF_INET6", "AF_PACKET"):
+                    self.assertNotIn(fam, src,
+                                     f"{rel} opens a {fam} socket — the "
+                                     f"mirror is LAN-local by the backend, "
+                                     f"and box-local by this socket")
+
+    def test_mirror_would_fail_if_it_gained_a_can_socket(self):
+        """The guard still fires for the allow-listed module — the net-send
+        allowance must not become a blanket exemption."""
+        src = ("import socket\n"
+               "def evil(iface):\n"
+               "    s = socket.socket(socket.AF_CAN, socket.SOCK_RAW,"
+               " socket.CAN_RAW)\n"
+               "    s.send(b'\\x00' * 16)\n")
+        # os.write back-door is caught because the module now reads as CAN…
+        v = scan_source("kilodash/eventsock.py",
+                        src + "import os\nos.write(3, b'x')\n")
+        self.assertTrue(any("os.write" in x for x in v),
+                        "a CAN-touching eventsock must lose its exemption")
 
 
 if __name__ == "__main__":

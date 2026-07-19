@@ -526,6 +526,49 @@ class CanScreen(Screen):
         h = self.app.h
         return (0, LIST_TOP, self.app.w, h - BOT_H - 8 - LIST_TOP)
 
+
+    def model(self):
+        """WEB-PROTOCOL.md §4.3. Reads tick()'s cached rows — it never
+        re-snapshots the monitor, which takes a lock and mutates rate state.
+
+        Diverges from the drafted §4.3 in three places, in every case because
+        the box does not have the data the draft assumed:
+          * `name` is always None. There is no DBC decode anywhere in
+            kilodash; CAN rows are nameless by design and semantic naming
+            lives on the NMEA2K screen.
+          * `dlc` is derived from the payload length — busmon does not store
+            DLC separately, and a remote frame carries no bytes at all.
+          * `state` is this screen's own presentation state, not a controller
+            read. canbus.py deliberately performs no I/O for presentation, so
+            `bus-off` and `error-passive` are not observable from here.
+        These are spec amendments, not omissions — see the ratification note.
+        """
+        rows = []
+        src = self._rows or []
+        for r in src[:64]:
+            data = r.get("data") or b""
+            rows.append({
+                "id": ("0x%08X" % r["id"]) if r.get("ext") else ("0x%03X" % r["id"]),
+                "ext": bool(r.get("ext")),
+                "count": r.get("count", 0),
+                "hz": round(r.get("rate", 0.0), 1),
+                "dlc": len(data),
+                "data": " ".join("%02X" % b for b in data),
+                "name": None,
+                "alert": bool(r.get("alert")),
+            })
+        st = self._stats or {}
+        return {
+            "kind": "canbus",
+            "iface": self.iface,
+            "bitrate": BITRATES[self.rate_idx],
+            "state": self._bus_state(),
+            "frame_rate": round(self.rx_rate or 0.0, 1),
+            "total": st.get("total", 0),
+            "rows": rows,
+            "truncated": len(src) > 64,
+        }
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         self._btns = {}

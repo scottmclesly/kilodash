@@ -71,6 +71,28 @@ class LauncherScreen(Screen):
                 if (s.device_key is None or self.app.devices.has(s.device_key))
                 and s.available()]
 
+
+    def model(self):
+        """WEB-PROTOCOL.md §4.2 — the launcher.
+
+        `available` mirrors the panel exactly: a hotplug screen whose device
+        is absent renders dimmed and non-interactive, never hidden, so the
+        web shows the same inventory the operator sees."""
+        tiles = []
+        for s in self.app.screens[1:]:
+            if not s.tile_id:
+                continue
+            present = (s.device_key is None
+                       or self.app.devices.has(s.device_key))
+            tiles.append({
+                "id": s.tile_id,
+                "title": s.title,
+                "glyph": s.glyph,
+                "available": bool(present and s.available()),
+                "badge": "lit" if s.device_key else None,
+            })
+        return {"kind": "home", "tiles": tiles}
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         tiles = self._visible()

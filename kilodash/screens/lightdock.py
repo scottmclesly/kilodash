@@ -142,6 +142,55 @@ class LightDockScreen(Screen):
         return self._pulse_rate
 
     # --------------------------------------------------------------- drawing
+
+    def model(self):
+        """WEB-PROTOCOL.md §4.5.
+
+        `link` is derived from the engine plus the cached tty edge state —
+        the authoritative check (devices.light_tty()) globs USB sysfs and is
+        far too expensive for model(), which must stay cheap.
+
+        Log lines carry no level on the box, so the level is inferred with
+        the same string test the panel uses — one rule, both surfaces.
+
+        The draft's `session.done/total` are not emitted: those totals are
+        computed inside _sync_tables and never stored, so there is nothing
+        truthful to report. Byte progress is real and is emitted."""
+        eng = self.engine
+        if eng is None:
+            link = "detected" if self._tty_present else "absent"
+            return {"kind": "lightdock", "link": link, "device": None,
+                    "session": {"phase": "idle"}, "log": []}
+        link = {"syncing": "docked", "complete": "docked",
+                "interrupted": "error"}.get(eng.state, "detected")
+        info = eng.info or {}
+        prog = eng.progress or {}
+        log = []
+        for ts, text in list(eng.events)[-32:]:
+            if text.startswith("interrupted") or "FAILED" in text:
+                level = "warn"
+            elif text.startswith("session complete"):
+                level = "ok"
+            else:
+                level = "info"
+            log.append({"t": ts, "level": level, "text": text})
+        return {
+            "kind": "lightdock",
+            "link": link,
+            "device": ({"product": info.get("product"),
+                        "fw": info.get("fw_version"),
+                        "sd_present": bool(info.get("sd_present"))}
+                       if info else None),
+            "session": {
+                "phase": getattr(eng, "phase", "idle"),
+                "state": eng.state,
+                "bytes": prog.get("bytes_done", 0),
+                "bytes_total": prog.get("bytes_total", 0),
+                "counts": dict(eng.counts or {}),
+            },
+            "log": log,
+        }
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         self._btns = {}

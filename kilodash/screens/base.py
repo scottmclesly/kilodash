@@ -79,6 +79,16 @@ class Screen:
         """Return True if the tap was consumed (forces redraw)."""
         return False
 
+    def handle_button(self, button_id):
+        """Press a button by id, as declared in `model_buttons()`. The web
+        mirror's only way to invoke an action (WEB-PROTOCOL.md §6); the panel
+        reaches the same code through `handle_tap`. Return True if consumed.
+
+        A screen that declares no buttons can receive no presses — the app
+        checks the active screen's declared list before dispatching, so this
+        default refusal is the safe floor, not a gap."""
+        return False
+
     def scroll_by(self, dy):
         if not self.scrollable:
             return False
@@ -133,3 +143,40 @@ class Screen:
 
     def draw_content(self, d, th):
         raise NotImplementedError
+
+    # ---- web mirror (WEB-PROTOCOL.md §4) ----
+    def model(self):
+        """This screen's web-mirror model: a JSON-safe dict, `kind` selecting
+        the renderer. Declared in ONE place so the emitter is derived from it
+        and a renamed field cannot silently desync the web (§4).
+
+        The base returns the `generic` fallback (§4.6), so a screen that
+        declares nothing still mirrors — no blank tiles — and gets promoted to
+        a rich model later without a protocol version bump (§9).
+
+        MUST be cheap and side-effect free: it reads already-computed screen
+        state, it never scans a bus or hits the network. Called on the render
+        thread, only when the screen has already reported a change."""
+        return {
+            "kind": "generic",
+            "title": self.title,
+            "rows": self.model_rows(),
+            "buttons": self.model_buttons(),
+            "note": "Rendered from the generic model — this screen has no "
+                    "rich model yet.",
+        }
+
+    def model_rows(self):
+        """Label/value rows for the generic model. Override to give the web
+        something real without writing a full rich model. Each row is
+        {"label", "value", "state"} with state None|"ok"|"caution"|"fault" —
+        same colour semantics as the panel, so "fault" is the only one that
+        may render red."""
+        return []
+
+    def model_buttons(self):
+        """Buttons the web may press, as {"id", "label", "enabled"}. `id` is
+        what a §6 `button_press` command names, and the box refuses a press
+        for a button not listed by the ACTIVE screen — so this list is the
+        authorisation surface, not just a rendering hint."""
+        return []
