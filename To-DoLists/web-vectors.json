@@ -1,0 +1,752 @@
+{
+ "$comment": "Conformance vectors for WEB-PROTOCOL.md. Hand-authored (unlike dock-vectors.json, there are no CRCs or hashes to compute — this is a JSON-over-socket protocol). Lives next to WEB-PROTOCOL.md per its §11. Both the kilodash emitter and the kilodash.webmirror backend unit-test against this file, and the React bundle is developed against it with no Pi attached. A change to WEB-PROTOCOL.md that does not update these vectors is incomplete.",
+ "protocol": "WEB-PROTOCOL.md",
+ "protocol_version": 1,
+ "vectors_version": "0.1",
+
+ "conventions": {
+  "event": "a box->web frame delivered on the Unix socket (and relayed verbatim to the browser over WebSocket). 'frame' is the exact JSON object, one line. 'expect' describes the required consumer behaviour.",
+  "command": "a web->box action. 'request' is the POST /api/input body; 'expect.status' is the required HTTP status; 'expect.effect' is what the box does. A command NEVER mutates web-visible state directly — the observable result always arrives as a separate event (§6).",
+  "sequence": "a multi-frame scenario. 'frames' are delivered in order; 'expect' describes required consumer behaviour across the whole run.",
+  "consumer_action": "one of: render, render_after_snapshot, ignore, resync, retheme, disconnect. 'resync' means issue request_snapshot subject to §5's 250 ms coalescing rule.",
+  "seq_note": "seq values inside one vector are internally consistent. Across vectors they are not — each vector is independent unless kind is 'sequence'.",
+  "pins_removed_action": "vectors marked pins_removed:true encode an action deliberately CUT from v1 (scroll, field_set). They must reject with 400. If a future version reinstates one, the reinstating change must delete or invert its vector deliberately — that is the point."
+ },
+
+ "frame_types": ["Hello", "ScreenSnapshot", "TileChanged", "DataUpdated", "AlertFired", "AlertCleared", "Error"],
+ "model_kinds": ["home", "canbus", "n2k", "lightdock", "generic"],
+ "actions": ["tap_tile", "button_press", "back", "home", "request_snapshot"],
+ "error_codes": ["version_mismatch", "busy", "bad_command", "resync"],
+
+ "vectors": [
+  {
+   "id": "hello-first-frame",
+   "section": "§3.Hello",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "Hello", "seq": 1, "t": 1752871200.0,
+    "device": "scottina-prime",
+    "kilodash_version": "1.4.2",
+    "protocol": 1,
+    "theme": {
+     "name": "green",
+     "bg": [0, 9, 3], "card": [3, 26, 10], "card_hi": [8, 46, 18],
+     "fg": [51, 245, 70], "muted": [0, 150, 40], "accent": [130, 255, 120],
+     "ok": [51, 235, 80], "warn": [255, 190, 40], "bad": [255, 96, 66]
+    }
+   },
+   "expect": {
+    "consumer_action": "retheme",
+    "renders": false,
+    "notes": "First frame on every connection. Palette is adopted; nothing renders yet — a consumer holds no model until the ScreenSnapshot of §5 arrives."
+   }
+  },
+  {
+   "id": "hello-midstream-theme-change",
+   "section": "§3.Hello",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "Hello", "seq": 4931, "t": 1752871900.0,
+    "device": "scottina-prime",
+    "kilodash_version": "1.4.2",
+    "protocol": 1,
+    "theme": {
+     "name": "amber",
+     "bg": [12, 6, 0], "card": [32, 19, 2], "card_hi": [52, 33, 6],
+     "fg": [255, 182, 66], "muted": [170, 112, 28], "accent": [255, 214, 110],
+     "ok": [150, 225, 90], "warn": [255, 226, 90], "bad": [255, 96, 66]
+    }
+   },
+   "expect": {
+    "consumer_action": "retheme",
+    "discards_model": false,
+    "resyncs": false,
+    "notes": "The operator switched the box to the amber CRT skin. Carries the CURRENT monotonic seq, not 1. Updates the palette and nothing else: the consumer must NOT treat this as a new connection, must NOT discard its model, must NOT resync."
+   },
+   "pins_open": true
+  },
+  {
+   "id": "hello-version-mismatch",
+   "section": "§9",
+   "kind": "event",
+   "frame": {
+    "v": 2, "type": "Hello", "seq": 1, "t": 1752871200.0,
+    "device": "scottina-prime", "kilodash_version": "2.0.0", "protocol": 2
+   },
+   "expect": {
+    "consumer_action": "disconnect",
+    "emits": {"code": "version_mismatch"},
+    "notes": "Loud and fatal. No partial parsing, no degrading to a subset — a frame shape the consumer does not know is one it cannot safely act on. §9."
+   }
+  },
+
+  {
+   "id": "snapshot-canbus",
+   "section": "§3.ScreenSnapshot",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "ScreenSnapshot", "seq": 2, "t": 1752871200.1,
+    "tile": "can-bus",
+    "nav": ["home", "can-bus"],
+    "rev": 118,
+    "tiles": [
+     {"id": "can-bus", "title": "CAN Bus", "glyph": "can", "available": true},
+     {"id": "n2k", "title": "NMEA2K", "glyph": "n2k", "available": true},
+     {"id": "gps", "title": "GPS", "glyph": "gps", "available": false},
+     {"id": "light-dock", "title": "Light Dock", "glyph": "lightdock", "available": true}
+    ],
+    "model": {
+     "kind": "canbus",
+     "iface": "can0",
+     "bitrate": 250000,
+     "state": "up",
+     "frame_rate": 812,
+     "total": 148223,
+     "rows": [
+      {"id": "0x0CF00400", "ext": true, "count": 4821, "hz": 100.2, "dlc": 8, "data": "FF FF FF 68 13 FF FF FF", "name": "EEC1", "alert": false},
+      {"id": "0x18FEE500", "ext": true, "count": 96, "hz": 2.0, "dlc": 8, "data": "00 00 00 00 12 34 56 78", "name": null, "alert": false}
+     ],
+     "truncated": false
+    },
+    "alerts": []
+   },
+   "expect": {
+    "consumer_action": "render",
+    "notes": "Sent unprompted after Hello on every accepted connection, and on every request_snapshot. Establishes the base state that DataUpdated deltas merge onto. tiles[] includes gps with available:false — render it dimmed and non-interactive, never omit it."
+   }
+  },
+  {
+   "id": "snapshot-home",
+   "section": "§4.2",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "ScreenSnapshot", "seq": 2, "t": 1752871210.0,
+    "tile": "home",
+    "nav": ["home"],
+    "rev": 0,
+    "tiles": [
+     {"id": "can-bus", "title": "CAN Bus", "glyph": "can", "available": true},
+     {"id": "gps", "title": "GPS", "glyph": "gps", "available": false},
+     {"id": "light-dock", "title": "Light Dock", "glyph": "lightdock", "available": true}
+    ],
+    "model": {
+     "kind": "home",
+     "tiles": [
+      {"id": "can-bus", "title": "CAN Bus", "glyph": "can", "available": true, "badge": null},
+      {"id": "gps", "title": "GPS", "glyph": "gps", "available": false, "badge": null},
+      {"id": "light-dock", "title": "Light Dock", "glyph": "lightdock", "available": true, "badge": "lit"}
+     ]
+    },
+    "alerts": []
+   },
+   "expect": {
+    "consumer_action": "render",
+    "notes": "On the launcher, nav is exactly ['home'] — one deep. light-dock carries badge:'lit' (device present). gps is available:false and renders dimmed."
+   }
+  },
+  {
+   "id": "model-n2k",
+   "section": "§4.4",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "TileChanged", "seq": 300, "t": 1752871300.0,
+    "tile": "n2k", "nav": ["home", "n2k"], "rev": 0,
+    "model": {
+     "kind": "n2k",
+     "iface": "can0",
+     "state": "up",
+     "sources": [
+      {"src": 0, "label": "ENGINE", "last_seen": 0.4},
+      {"src": 12, "label": "GPS", "last_seen": 1.1}
+     ],
+     "fields": [
+      {"pgn": 127488, "src": 0, "name": "ENGINE RPM", "value": 4210, "unit": "rpm", "fmt": "%.0f", "armed": true, "alerting": true, "last_seen": 0.2},
+      {"pgn": 127489, "src": 0, "name": "COOLANT TEMP", "value": 88.5, "unit": "C", "fmt": "%.1f", "armed": true, "alerting": false, "last_seen": 0.6},
+      {"pgn": 129029, "src": 12, "name": "LATITUDE", "value": 51.4934, "unit": "deg", "fmt": "%.4f", "armed": false, "alerting": false, "last_seen": 1.1}
+     ],
+     "truncated": false
+    }
+   },
+   "expect": {
+    "consumer_action": "render",
+    "colour_rules": {
+     "ENGINE RPM": "bad — alerting:true is an actual fault",
+     "COOLANT TEMP": "warn — armed:true but not alerting (watch configured, not firing)",
+     "LATITUDE": "normal chrome — armed:false"
+    },
+    "notes": "Pins the §3.Hello colour semantics: red is reserved for alerting:true. An armed-but-unfired watch is caution amber and is NOT an alert — no AlertFired accompanies it."
+   }
+  },
+  {
+   "id": "model-lightdock",
+   "section": "§4.5",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "TileChanged", "seq": 410, "t": 1752871400.0,
+    "tile": "light-dock", "nav": ["home", "light-dock"], "rev": 0,
+    "model": {
+     "kind": "lightdock",
+     "link": "docked",
+     "device": {"vid": "0x2E8A", "product": "Scottina Light", "fw": "1.0.3"},
+     "session": {
+      "phase": "pull",
+      "detail": "raw004.log",
+      "done": 3, "total": 7,
+      "bytes": 184320, "bytes_total": 502134
+     },
+     "log": [
+      {"t": 1752871390.0, "level": "info", "text": "DOCKED · SCOTTINA LIGHT 1.0.3"},
+      {"t": 1752871392.0, "level": "info", "text": "CLOCK SET · 3 GPS"},
+      {"t": 1752871400.0, "level": "info", "text": "PULL 4/7 · raw004.log"}
+     ]
+    }
+   },
+   "expect": {
+    "consumer_action": "render",
+    "notes": "Progress renders from done/total and bytes/bytes_total ONLY. The consumer must not compute a transfer rate or ETA the box has not emitted — both surfaces must agree on any number a user reads aloud."
+   }
+  },
+  {
+   "id": "model-generic-fallback",
+   "section": "§4.6",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "TileChanged", "seq": 520, "t": 1752871500.0,
+    "tile": "pi-health", "nav": ["home", "pi-health"], "rev": 0,
+    "model": {
+     "kind": "generic",
+     "title": "Pi Health",
+     "rows": [
+      {"label": "CPU", "value": "12%", "state": "ok"},
+      {"label": "TEMP", "value": "48.2 C", "state": null},
+      {"label": "THROTTLED", "value": "YES", "state": "fault"}
+     ],
+     "buttons": [
+      {"id": "refresh", "label": "REFRESH", "enabled": true}
+     ],
+     "note": "Rendered from the generic model — this screen has no rich model yet."
+    }
+   },
+   "expect": {
+    "consumer_action": "render",
+    "notes": "The compatibility floor of §9 — every consumer MUST render this. It is what an old bundle falls back to for a screen it has never heard of. state:'fault' is the only row that may render red."
+   }
+  },
+
+  {
+   "id": "delta-shallow-merge",
+   "section": "§4.DataUpdated",
+   "kind": "sequence",
+   "frames": [
+    {
+     "v": 1, "type": "ScreenSnapshot", "seq": 2, "t": 1752871200.1,
+     "tile": "can-bus", "nav": ["home", "can-bus"], "rev": 118,
+     "tiles": [{"id": "can-bus", "title": "CAN Bus", "glyph": "can", "available": true}],
+     "model": {
+      "kind": "canbus", "iface": "can0", "bitrate": 250000, "state": "up",
+      "frame_rate": 800, "total": 148000,
+      "rows": [
+       {"id": "0x0CF00400", "ext": true, "count": 4800, "hz": 100.0, "dlc": 8, "data": "FF FF FF 60 13 FF FF FF", "name": "EEC1", "alert": false}
+      ],
+      "truncated": false
+     },
+     "alerts": []
+    },
+    {
+     "v": 1, "type": "DataUpdated", "seq": 3, "t": 1752871200.6,
+     "tile": "can-bus", "rev": 119,
+     "changed": {
+      "frame_rate": 812,
+      "rows": [
+       {"id": "0x0CF00400", "ext": true, "count": 4821, "hz": 100.2, "dlc": 8, "data": "FF FF FF 68 13 FF FF FF", "name": "EEC1", "alert": false},
+       {"id": "0x18FEE500", "ext": true, "count": 96, "hz": 2.0, "dlc": 8, "data": "00 00 00 00 12 34 56 78", "name": null, "alert": false}
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "consumer_action": "render",
+    "resulting_model": {
+     "kind": "canbus", "iface": "can0", "bitrate": 250000, "state": "up",
+     "frame_rate": 812, "total": 148000,
+     "rows": [
+      {"id": "0x0CF00400", "ext": true, "count": 4821, "hz": 100.2, "dlc": 8, "data": "FF FF FF 68 13 FF FF FF", "name": "EEC1", "alert": false},
+      {"id": "0x18FEE500", "ext": true, "count": 96, "hz": 2.0, "dlc": 8, "data": "00 00 00 00 12 34 56 78", "name": null, "alert": false}
+     ],
+     "truncated": false
+    },
+    "notes": "SHALLOW merge at the top level of model. 'rows' is replaced WHOLE (the new row is not appended — the array arrived complete). 'total' and 'bitrate' were absent from changed, so they are untouched. There is no deep-merge and no array patching."
+   }
+  },
+  {
+   "id": "delta-rev-gap-forces-resync",
+   "section": "§4.DataUpdated + §5",
+   "kind": "sequence",
+   "frames": [
+    {
+     "v": 1, "type": "ScreenSnapshot", "seq": 2, "t": 1752871200.1,
+     "tile": "can-bus", "nav": ["home", "can-bus"], "rev": 118,
+     "tiles": [{"id": "can-bus", "title": "CAN Bus", "glyph": "can", "available": true}],
+     "model": {"kind": "canbus", "iface": "can0", "bitrate": 250000, "state": "up", "frame_rate": 800, "total": 148000, "rows": [], "truncated": false},
+     "alerts": []
+    },
+    {
+     "v": 1, "type": "DataUpdated", "seq": 3, "t": 1752871201.0,
+     "tile": "can-bus", "rev": 121,
+     "changed": {"frame_rate": 850}
+    }
+   ],
+   "expect": {
+    "consumer_action": "resync",
+    "applies_delta": false,
+    "notes": "rev jumped 118 -> 121: revs 119 and 120 were assigned at change time and then coalesced or dropped under §7. The consumer MUST NOT apply the delta — merging onto a base that skipped two states is exactly the silent divergence §9 forbids. Issue request_snapshot, subject to §5's 250 ms coalescing."
+   },
+   "pins_open": true
+  },
+  {
+   "id": "delta-before-snapshot-discarded",
+   "section": "§5",
+   "kind": "sequence",
+   "frames": [
+    {
+     "v": 1, "type": "DataUpdated", "seq": 7, "t": 1752871202.0,
+     "tile": "can-bus", "rev": 119,
+     "changed": {"frame_rate": 812}
+    }
+   ],
+   "expect": {
+    "consumer_action": "ignore",
+    "renders": false,
+    "queues": false,
+    "notes": "A delta arriving with no snapshot held is DISCARDED, not queued. Patching from an assumed base state is the precise failure §5 exists to prevent. The consumer renders nothing until it holds a snapshot."
+   }
+  },
+  {
+   "id": "delta-for-stale-tile",
+   "section": "§4.DataUpdated",
+   "kind": "sequence",
+   "frames": [
+    {
+     "v": 1, "type": "TileChanged", "seq": 40, "t": 1752871240.0,
+     "tile": "n2k", "nav": ["home", "n2k"], "rev": 0,
+     "model": {"kind": "n2k", "iface": "can0", "state": "up", "sources": [], "fields": [], "truncated": false}
+    },
+    {
+     "v": 1, "type": "DataUpdated", "seq": 41, "t": 1752871240.1,
+     "tile": "can-bus", "rev": 120,
+     "changed": {"frame_rate": 900}
+    }
+   ],
+   "expect": {
+    "consumer_action": "ignore",
+    "notes": "The delta names can-bus but the active tile is n2k — an in-flight frame from the screen just left. Dropped on the echoed 'tile' field. It must NOT be applied to the n2k model, and must NOT trigger a resync (this is not a gap)."
+   }
+  },
+  {
+   "id": "tilechanged-carries-full-model",
+   "section": "§3.TileChanged",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "TileChanged", "seq": 4813, "t": 1752871240.0,
+    "tile": "n2k", "nav": ["home", "n2k"], "rev": 0,
+    "model": {
+     "kind": "n2k", "iface": "can0", "state": "up",
+     "sources": [{"src": 0, "label": "ENGINE", "last_seen": 0.4}],
+     "fields": [],
+     "truncated": false
+    }
+   },
+   "expect": {
+    "consumer_action": "render",
+    "resyncs": false,
+    "notes": "TileChanged always carries the FULL model of the screen entered and resets rev to 0. It is a screen-scoped snapshot — the consumer never needs to request one after a nav. rev:0 after a high rev on the previous screen is NOT a gap."
+   }
+  },
+
+  {
+   "id": "alert-fired",
+   "section": "§3.AlertFired",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "AlertFired", "seq": 4820, "t": 1752871245.0,
+    "alert": {
+     "id": "n2k:127488:0:range",
+     "tile": "n2k",
+     "kind": "range",
+     "label": "ENGINE RPM",
+     "detail": "4210 > 4000",
+     "severity": "fault",
+     "t_fired": 1752871245.0
+    }
+   },
+   "expect": {
+    "consumer_action": "render",
+    "modal": false,
+    "colour": "bad",
+    "notes": "Non-modal — badge and row flash, never a dialog, matching the panel. severity:'fault' is the only value that may render red. Edge-triggered: a stuck-bad value fires once and does not refire."
+   }
+  },
+  {
+   "id": "alert-caution-severity",
+   "section": "§3.AlertFired",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "AlertFired", "seq": 4821, "t": 1752871246.0,
+    "alert": {
+     "id": "can:0x18FEE500:appearance",
+     "tile": "can-bus",
+     "kind": "appearance",
+     "label": "NEW ID 0x18FEE500",
+     "detail": "first seen",
+     "severity": "caution",
+     "t_fired": 1752871246.0
+    }
+   },
+   "expect": {
+    "consumer_action": "render",
+    "modal": false,
+    "colour": "warn",
+    "notes": "severity:'caution' renders amber, never red. A new CAN ID appearing is noteworthy, not a fault."
+   }
+  },
+  {
+   "id": "alert-cleared",
+   "section": "§3.AlertCleared",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "AlertCleared", "seq": 4890, "t": 1752871280.0,
+    "alert": {"id": "n2k:127488:0:range"}
+   },
+   "expect": {
+    "consumer_action": "render",
+    "notes": "Carries the same id as the AlertFired it clears, and nothing else is required. Alerts are box-scoped, not screen-scoped: they survive a tile change and appear in ScreenSnapshot.alerts while active."
+   }
+  },
+
+  {
+   "id": "error-busy-second-subscriber",
+   "section": "§1 + §8",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "Error", "seq": 1, "t": 1752871300.0,
+    "code": "busy", "detail": "subscriber already connected"
+   },
+   "expect": {
+    "consumer_action": "disconnect",
+    "retry_backoff_min_s": 5,
+    "notes": "At most one subscriber on the box socket (§1). A second connect is accepted then immediately closed with this frame. The client must back off at least 5 s — no retry storm."
+   }
+  },
+  {
+   "id": "error-resync",
+   "section": "§8",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "Error", "seq": 91, "t": 1752871300.0,
+    "code": "resync", "detail": "model signature reset"
+   },
+   "expect": {
+    "consumer_action": "resync",
+    "discards_model": true,
+    "notes": "Producer state is discontinuous. Discard the held model and request_snapshot. Never reconcile — resync is always re-read, never merge."
+   }
+  },
+  {
+   "id": "error-bad-command",
+   "section": "§8",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "Error", "seq": 92, "t": 1752871305.0,
+    "code": "bad_command", "detail": "button_press 'refresh' not on active screen 'can-bus'"
+   },
+   "expect": {
+    "consumer_action": "ignore",
+    "surfaces_to_user": true,
+    "retries": false,
+    "notes": "The box's rejection channel, distinct from the backend's HTTP 4xx. A command can pass the backend's envelope check and still be refused by the box (the active screen changed between POST and dispatch — last-input-wins in action). Surface it; never retry, or a losing command would fight the panel."
+   }
+  },
+  {
+   "id": "unknown-frame-type-ignored",
+   "section": "§2",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "SomethingFromTheFuture", "seq": 4900, "t": 1752871310.0,
+    "payload": {"anything": true}
+   },
+   "expect": {
+    "consumer_action": "ignore",
+    "disconnects": false,
+    "notes": "Unknown TYPES are ignored, not fatal (§2) — this is what lets a newer box talk to an older bundle. Contrast with an unknown protocol VERSION, which is fatal (§9). The distinction is deliberate."
+   }
+  },
+  {
+   "id": "unknown-model-kind-with-rows",
+   "section": "§9",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "TileChanged", "seq": 600, "t": 1752871600.0,
+    "tile": "wifi-sniff", "nav": ["home", "wifi-sniff"], "rev": 0,
+    "model": {
+     "kind": "wifisniff",
+     "title": "WiFi Sniff",
+     "rows": [
+      {"label": "CH 6", "value": "42 pkt/s", "state": "ok"}
+     ],
+     "channel": 6,
+     "packets": 18422
+    }
+   },
+   "expect": {
+    "consumer_action": "render",
+    "rendered_as": "generic",
+    "notes": "An old bundle meets a screen promoted to a rich model after it shipped. Because the payload carries 'rows', it MUST render as generic. Unknown extra fields (channel, packets) are ignored. This rule is what makes screen promotion a routine commit and NOT a version bump."
+   }
+  },
+  {
+   "id": "unknown-model-kind-without-rows",
+   "section": "§9",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "TileChanged", "seq": 610, "t": 1752871610.0,
+    "tile": "logic", "nav": ["home", "logic"], "rev": 0,
+    "model": {
+     "kind": "logic",
+     "channels": 8,
+     "sample_rate": 24000000
+    }
+   },
+   "expect": {
+    "consumer_action": "render",
+    "rendered_as": "placeholder",
+    "placeholder_names_kind": true,
+    "notes": "No 'rows' to fall back on, so the consumer shows a 'no renderer' placeholder that NAMES the kind ('logic'). It must not render blank and must not error — an operator seeing the kind name can tell the bundle is stale."
+   }
+  },
+  {
+   "id": "unknown-field-in-known-model",
+   "section": "§9",
+   "kind": "event",
+   "frame": {
+    "v": 1, "type": "DataUpdated", "seq": 700, "t": 1752871700.0,
+    "tile": "can-bus", "rev": 1,
+    "changed": {"frame_rate": 900, "bus_load_pct": 41.2}
+   },
+   "expect": {
+    "consumer_action": "render",
+    "notes": "'bus_load_pct' is not in the v1 canbus model. Consumers MUST ignore unknown fields. Adding a field to an existing model is not a version bump (§9)."
+   }
+  },
+  {
+   "id": "oversized-frame",
+   "section": "§2",
+   "kind": "event",
+   "frame_synthetic": {"note": "a single newline-delimited line exceeding 65536 bytes"},
+   "expect": {
+    "consumer_action": "disconnect",
+    "buffers": false,
+    "notes": "Max frame is 64 KiB. A producer never emits one (§4 caps truncate first), so an oversized line means something is wrong upstream. The consumer drops the connection and reconnects rather than buffering it — an unbounded read on a malformed stream is the one way this loopback path could exhaust memory."
+   }
+  },
+
+  {
+   "id": "cmd-tap-tile",
+   "section": "§6",
+   "kind": "command",
+   "request": {"action": "tap_tile", "tile": "can-bus"},
+   "expect": {
+    "status": 202,
+    "effect": "queued for the UI thread; applied via the same path as a launcher tile tap",
+    "observable_via": {"type": "TileChanged", "tile": "can-bus", "rev": 0},
+    "optimistic_local_apply": false,
+    "notes": "202 means ACCEPTED, not applied. The web must not optimistically apply its own command — it waits to be told what became true. There is exactly one path by which the web's display changes, and it is the event stream."
+   }
+  },
+  {
+   "id": "cmd-tap-tile-unavailable",
+   "section": "§6",
+   "kind": "command",
+   "request": {"action": "tap_tile", "tile": "gps"},
+   "box_state": {"tile_available": {"gps": false}},
+   "expect": {
+    "status": 409,
+    "effect": "none",
+    "notes": "Well-formed but not valid now — the GPS device is not present, so the tile is not tappable on the panel either. Symmetry with the panel is the test: if a finger cannot do it, neither can the web."
+   }
+  },
+  {
+   "id": "cmd-button-press",
+   "section": "§6",
+   "kind": "command",
+   "request": {"action": "button_press", "button": "refresh"},
+   "box_state": {"active_tile": "pi-health", "buttons": ["refresh"]},
+   "expect": {
+    "status": 202,
+    "effect": "queued; dispatched to the active screen's handler",
+    "observable_via": {"type": "DataUpdated", "tile": "pi-health"},
+    "notes": "button id matches a buttons[].id in the active screen's model (§4.6)."
+   }
+  },
+  {
+   "id": "cmd-button-press-not-on-active-screen",
+   "section": "§6",
+   "kind": "command",
+   "request": {"action": "button_press", "button": "refresh"},
+   "box_state": {"active_tile": "can-bus", "buttons": ["clear", "pause"]},
+   "expect": {
+    "status": 409,
+    "effect": "none",
+    "notes": "409, explicitly NOT a silent no-op. The box does not synthesise input for a screen that is not showing, and the web is told so it can resync rather than believe a phantom press landed."
+   }
+  },
+  {
+   "id": "cmd-back",
+   "section": "§6",
+   "kind": "command",
+   "request": {"action": "back"},
+   "box_state": {"active_tile": "can-bus"},
+   "expect": {
+    "status": 202,
+    "effect": "go_home() — nav is a two-level star, so back from any screen returns to the launcher",
+    "observable_via": {"type": "TileChanged", "tile": "home", "nav": ["home"], "rev": 0}
+   }
+  },
+  {
+   "id": "cmd-home",
+   "section": "§6",
+   "kind": "command",
+   "request": {"action": "home"},
+   "box_state": {"active_tile": "n2k"},
+   "expect": {
+    "status": 202,
+    "effect": "go_home()",
+    "observable_via": {"type": "TileChanged", "tile": "home", "nav": ["home"], "rev": 0},
+    "notes": "Identical effect to 'back' in v1, because nav never exceeds two levels. Both are kept because they are distinct user intents and would diverge if nav ever deepened."
+   }
+  },
+  {
+   "id": "cmd-request-snapshot",
+   "section": "§6 + §5",
+   "kind": "command",
+   "request": {"action": "request_snapshot"},
+   "expect": {
+    "status": 202,
+    "effect": "box builds a full model on the UI thread and emits ScreenSnapshot",
+    "observable_via": {"type": "ScreenSnapshot"},
+    "rate_limit_ms": 250,
+    "notes": "The only action with no panel equivalent — it is pure resync and constructs no input. Also the only command that makes the box do real work, so it is rate-limited at both ends (§5 consumer coalescing, §7 box servicing) so a resync storm cannot form."
+   }
+  },
+  {
+   "id": "cmd-box-socket-down",
+   "section": "§6",
+   "kind": "command",
+   "request": {"action": "home"},
+   "box_state": {"socket_connected": false},
+   "expect": {
+    "status": 503,
+    "effect": "none",
+    "notes": "The backend is up but has no box behind it. Distinct from 409 — nothing is wrong with the command, there is simply nothing to deliver it to."
+   }
+  },
+  {
+   "id": "cmd-unknown-action",
+   "section": "§6",
+   "kind": "command",
+   "request": {"action": "reboot"},
+   "expect": {
+    "status": 400,
+    "effect": "none",
+    "notes": "§6 is a positive, CLOSED allow-list. An action not in the table is rejected, never passed through. This is the mechanism that makes the no-new-TX-surface scope constraint enforced rather than merely intended."
+   }
+  },
+  {
+   "id": "cmd-scroll-removed",
+   "section": "§6",
+   "kind": "command",
+   "request": {"action": "scroll", "dy": 120},
+   "expect": {
+    "status": 400,
+    "effect": "none",
+    "notes": "'scroll' was deliberately CUT from v1: a viewport offset is not mirrored box state. Both surfaces hold the full row set (up to the §4 caps) and scroll it locally; a shared offset would manufacture the two-surface divergence this design rules out. A box-side selection cursor, if ever needed, is a 'selected' model field plus a 'select' action — never a viewport scroll."
+   },
+   "pins_removed": true
+  },
+  {
+   "id": "cmd-field-set-removed",
+   "section": "§6 + Deliberately deferred",
+   "kind": "command",
+   "request": {"action": "field_set", "field": "bitrate", "value": 250000},
+   "expect": {
+    "status": 400,
+    "effect": "none",
+    "notes": "'field_set' was deliberately CUT from v1: no v1 screen exposes an on-screen editor, so no field_set could satisfy §6's panel-equivalence rule. It returns in the version shipping the first real editor (likely CAN bitrate), introduced together with that screen's 'fields' declaration, as a §9 version bump. Reinstating it must delete or invert this vector deliberately."
+   },
+   "pins_removed": true
+  },
+  {
+   "id": "cmd-malformed-body",
+   "section": "§6",
+   "kind": "command",
+   "request": {"tile": "can-bus"},
+   "expect": {
+    "status": 400,
+    "effect": "none",
+    "notes": "No 'action' key at all. Envelope validation is the backend's job and happens before anything reaches the box."
+   }
+  },
+
+  {
+   "id": "last-input-wins",
+   "section": "§6",
+   "kind": "sequence",
+   "frames": [
+    {
+     "v": 1, "type": "TileChanged", "seq": 800, "t": 1752871800.0,
+     "tile": "can-bus", "nav": ["home", "can-bus"], "rev": 0,
+     "model": {"kind": "canbus", "iface": "can0", "bitrate": 250000, "state": "up", "frame_rate": 800, "total": 1, "rows": [], "truncated": false}
+    },
+    {
+     "v": 1, "type": "TileChanged", "seq": 801, "t": 1752871801.0,
+     "tile": "n2k", "nav": ["home", "n2k"], "rev": 0,
+     "model": {"kind": "n2k", "iface": "can0", "state": "up", "sources": [], "fields": [], "truncated": false}
+    }
+   ],
+   "expect": {
+    "consumer_action": "render",
+    "final_tile": "n2k",
+    "notes": "The web navigated to can-bus; a finger on the panel then went to n2k. The web view JUMPS to n2k. This is correct and intended — the truth surfacing, not a bug. No lock, no lease, no arbitration: state is singular, so last-input-wins. Do not engineer around it."
+   },
+   "pins_open": true
+  },
+  {
+   "id": "reconnect-resync-no-replay",
+   "section": "§5",
+   "kind": "sequence",
+   "frames": [
+    {
+     "v": 1, "type": "Hello", "seq": 1, "t": 1752871900.0,
+     "device": "scottina-prime", "kilodash_version": "1.4.2", "protocol": 1,
+     "theme": {"name": "green", "bg": [0, 9, 3], "card": [3, 26, 10], "card_hi": [8, 46, 18], "fg": [51, 245, 70], "muted": [0, 150, 40], "accent": [130, 255, 120], "ok": [51, 235, 80], "warn": [255, 190, 40], "bad": [255, 96, 66]}
+    },
+    {
+     "v": 1, "type": "ScreenSnapshot", "seq": 2, "t": 1752871900.1,
+     "tile": "home", "nav": ["home"], "rev": 0,
+     "tiles": [{"id": "can-bus", "title": "CAN Bus", "glyph": "can", "available": true}],
+     "model": {"kind": "home", "tiles": [{"id": "can-bus", "title": "CAN Bus", "glyph": "can", "available": true, "badge": null}]},
+     "alerts": []
+    }
+   ],
+   "preconditions": {
+    "web_buffered_inputs_during_outage": [{"action": "tap_tile", "tile": "n2k"}]
+   },
+   "expect": {
+    "consumer_action": "render_after_snapshot",
+    "replays_buffered_input": false,
+    "final_tile": "home",
+    "notes": "seq restarts at 1 on a NEW connection, with the full Hello + snapshot handshake. The tap_tile the user made during the outage is DISCARDED, not replayed — the box is truth and the web re-reads it. Replaying would let a stale intent overwrite a state the box has since moved past."
+   },
+   "pins_open": true
+  }
+ ]
+}

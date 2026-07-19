@@ -26,5 +26,10 @@ tables/*
 *.log
 *.kismet.netxml
 
-# Work documents
-To-DoLists
+# To-DoLists/ is scratch and ignored, EXCEPT ratified protocol
+# assets, which must track. Negations below key on these exact
+# name patterns — a contract named off-pattern will be silently
+# untracked. Keep the suffixes.
+To-DoLists/*
+!To-DoLists/*-PROTOCOL.md
+!To-DoLists/*-vectors.json
