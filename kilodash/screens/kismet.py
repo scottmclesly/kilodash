@@ -61,6 +61,7 @@ def _peer_color(th, dtype):
 
 class KismetScreen(WebAppScreen):
     title = "Kismet"
+    tile_id = "kismet"
     glyph = "kismet"
     tile_color_key = "warn"
     app_name = "Kismet"

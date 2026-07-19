@@ -39,6 +39,7 @@ def _tx_ready():
 
 class AisCatcherScreen(WebAppScreen):
     title = "AIS"
+    tile_id = "ais"
     glyph = "ais"
     tile_color_key = "accent"
     app_name = "AIS-catcher"

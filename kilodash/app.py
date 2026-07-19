@@ -105,10 +105,10 @@ class App:
         # request the main loop applies on the UI thread (never from BLE).
         self.microkvm = None
         try:
-            from microkvm.service import Runtime, tile_slug
+            from microkvm.service import Runtime
             self.microkvm = Runtime(self.config["microkvm"],
                                     screens=self.screens).start()
-            self.microkvm.wire_ui(lambda: tile_slug(self.current.title))
+            self.microkvm.wire_ui(lambda: self.current.tile_id or "-")
         except Exception as e:          # noqa: BLE001 — plane is optional
             print(f"microkvm: not started: {e}", file=sys.stderr)
 
@@ -238,14 +238,19 @@ class App:
         self.open_screen(self.launcher)
 
     def open_named_screen(self):
-        """Dev seam: KILODASH_OPEN=<title-slug> (e.g. `signal-k`) jumps
-        straight to that screen after the splash, so a UI change can be
-        eyeballed over SSH without tapping the panel."""
+        """Dev seam: KILODASH_OPEN=<tile_id> (e.g. `signal-k`) jumps straight
+        to that screen after the splash, so a UI change can be eyeballed over
+        SSH without tapping the panel.
+
+        Matches `tile_id` (WEB-PROTOCOL.md §4.1). This used to derive a slug
+        from the title by replacing spaces only, which silently never matched
+        any hyphenated title — `KILODASH_OPEN=wi-fi` worked but `wifi` did
+        not, and `rtl-sdr` / `node-red` were unreachable by any spelling."""
         want = os.environ.get("KILODASH_OPEN", "").strip().lower()
         if not want:
             return
         for scr in self.screens:
-            if scr.title.lower().replace(" ", "-") == want and scr.available():
+            if scr.tile_id == want and scr.available():
                 self.open_screen(scr)
                 return
         print(f"KILODASH_OPEN: no screen '{want}'", file=sys.stderr)

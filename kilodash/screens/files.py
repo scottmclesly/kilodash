@@ -180,6 +180,7 @@ def _export_tables():
 
 class FilesScreen(Screen):
     title = "Files"
+    tile_id = "files"
     glyph = "files"
     tile_color_key = "accent"
     device_key = "usbstick"

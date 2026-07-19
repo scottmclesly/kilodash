@@ -160,6 +160,7 @@ def _provision(port, config, blk):
 
 class CanScreen(Screen):
     title = "CAN Bus"
+    tile_id = "can-bus"
     glyph = "can"
     tile_color_key = "bad"
     device_key = "can"

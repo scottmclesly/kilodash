@@ -46,6 +46,7 @@ def _printable(s, cap):
 class Executor:
     def __init__(self, armed_fn=None, info=None, request_tile_fn=None,
                  active_tile_fn=None, link_fn=None, tiles=None,
+                 tile_aliases=None,
                  popen=None, run=None, timer_factory=None,
                  capture_dir=CAPTURE_DIR):
         # armed_fn() -> (armed: bool, reason: str). Default: never armed —
@@ -60,6 +61,10 @@ class Executor:
         self._timer_factory = timer_factory or threading.Timer
         self._capture_dir = capture_dir
         self.registry = reg.build_registry(tiles)
+        # Legacy alnum tile slug -> canonical tile_id. Applied at ingress
+        # (_dispatch) so the domain, the reject pass and `help tile` all stay
+        # canonical-only: an old token is accepted, never advertised.
+        self._tile_aliases = dict(tile_aliases or {})
         self._caps = {}                         # target -> (Popen, logfile)
         self._reboot_timer = None
         self.log = collections.deque(maxlen=LOG_LINES)
@@ -105,6 +110,11 @@ class Executor:
         if len(args) != len(verb.args):
             raise RejectError(f"reject bad-arity want={len(verb.args)} "
                               f"got={len(args)}")
+        if verb.func == "tile" and args:
+            # `tile nmea2k` (pre-tile_id canned message) -> `tile n2k`, before
+            # the domain check sees it. The reply echoes the canonical id, so
+            # the operator learns the new token from a command that worked.
+            args = [self._tile_aliases.get(args[0], args[0])] + args[1:]
         for spec, tok in zip(verb.args, args):
             if tok not in spec.domain:
                 raise RejectError(

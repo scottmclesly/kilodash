@@ -71,6 +71,7 @@ def _phase_glyph(d, key, cx, cy, r, c, t=None):
 
 class PomodoroScreen(Screen):
     title = "Pomodoro"
+    tile_id = "pomodoro"
     glyph = "pomodoro"
     tile_color_key = "bad"
     scrollable = False

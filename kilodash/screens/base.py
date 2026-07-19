@@ -13,6 +13,12 @@ HEADER_H = 44
 
 class Screen:
     title = "Screen"
+    tile_id = None             # stable wire identity (WEB-PROTOCOL.md §4.1):
+    #                            lowercase-kebab, unique, and NOT derived from
+    #                            `title` — renaming a title must never change
+    #                            it. Distinct from `glyph` (pictogram key) and
+    #                            `device_key` (hotplug key), which collide with
+    #                            it by coincidence on some screens.
     icon = ""
     glyph = None               # launcher pictogram key (see pictograms.py)
     scrollable = False

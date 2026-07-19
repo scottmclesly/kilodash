@@ -43,6 +43,7 @@ CARD_GAP = 8
 
 class MicroKvmScreen(Screen):
     title = "Micro KVM"
+    tile_id = "micro-kvm"
     glyph = "microkvm"
     scrollable = True
 

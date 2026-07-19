@@ -54,8 +54,27 @@ pair request↔reply. Examples:
 
 ```
 status: up 3h04m, 47.2C, tile=home, armed=yes, rssi=-104/8.5
-tile: active=nmea2k
+tile: active=n2k
 ```
+
+**Tile tokens changed once, and the old ones still work.** Screens used to be
+addressed by a slug derived from the launcher title (lowercased, alnum only:
+`nmea2k`, `lanscan`, `micro kvm` → `microkvm`). They are now addressed by the
+screen's declared `tile_id` (`n2k`, `lan-scan`, `micro-kvm`) — the same
+identity the web mirror uses, so there is exactly one name for a screen across
+every surface.
+
+Because the old tokens are sitting in canned messages on paired handsets, and
+off-grid is the worst possible place to discover a command stopped working,
+**every legacy token is normalised to its `tile_id` at ingress.** The alias is
+accepted but never advertised: `help tile` lists canonical ids only, and the
+reply echoes the canonical id, so an operator learns the new token from a
+command that worked rather than from a rejection.
+
+The alias table is generated from the screen list, not hand-maintained, so a
+screen cannot be added with a forgotten alias. Aliases exist only where the
+token actually changed — `gps`, `files`, `tables` and friends were always the
+same and get no entry.
 
 ### Rejection replies
 
@@ -99,7 +118,7 @@ reverse. Executable = exactly these verbs, these arities, these domains.
 | `status` | — | read-only | internal: uptime, SoC temp, active tile, armed, last RSSI/SNR | `status: up <t>, <temp>C, tile=<slug>, armed=<yes\|no>, rssi=<dbm>/<snr>` |
 | `health` | — | read-only | internal: service summary, disk/temp/mem headroom, armed echoed | `health: svcs <name>=<up\|down>…, disk <n>%, mem <n>%, temp <t>C, armed=<yes\|no>` |
 | `snap <metric>` | `metric` ∈ `temp mem disk load uptime wifi` | read-only | internal one-shot metric read | `snap: <metric>=<value>` |
-| `tile <name>` | `name` ∈ known tile slugs (launcher screen titles, lowercased, alnum only — e.g. `nmea2k`, `lanscan`, `pihealth` — plus the alias `home` for the launcher) | action | internal: request UI screen switch | `tile: active=<slug>` |
+| `tile <name>` | `name` ∈ known `tile_id`s — the screens' declared wire identities, lowercase-kebab (e.g. `n2k`, `lan-scan`, `pi-health`), `home` for the launcher. Pre-`tile_id` alnum tokens (`nmea2k`, `lanscan`, `pihealth`) are still **accepted** as hidden aliases — see below | action | internal: request UI screen switch | `tile: active=<tile_id>` |
 | `cap start\|stop <target>` | `op` ∈ `start stop`; `target` ∈ `can` | action | internal process mgmt around argv `["candump", "-L", "-n", "100000", "can0"]` → `captures/microkvm-<target>.log` | `cap: running target=<t> pid=<n>` / `cap: stopped target=<t>` |
 | `svc restart <name>` | `op` ∈ `restart`; `name` ∈ `kilodash signalk nodered kismet` | action | argv `["systemctl", "restart", "<name>.service"]`, then `is-active` | `svc: restarted <name> state=<active\|failed\|…>` |
 | `reboot` | — | action | internal: **reply first**, then argv `["systemctl", "reboot"]` after 15 s | `reboot: scheduled in 15s` |

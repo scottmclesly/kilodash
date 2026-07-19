@@ -16,6 +16,7 @@ GAUGE_SEGS = 20          # 5% per segment
 
 class HealthScreen(Screen):
     title = "Pi Health"
+    tile_id = "pi-health"
     glyph = "health"
     tile_color_key = "warn"
     icon = ""

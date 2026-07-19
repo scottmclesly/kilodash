@@ -16,6 +16,7 @@ ROTATE_SEC = 3
 
 class LauncherScreen(Screen):
     title = "Scottina"
+    tile_id = "home"
     scrollable = False
 
     def __init__(self, app):

@@ -58,6 +58,7 @@ STATES = {
 
 class LightDockScreen(Screen):
     title = "Light Dock"
+    tile_id = "light-dock"
     glyph = "lightdock"
     tile_color_key = "accent"
     device_key = "scottinalight"

@@ -91,6 +91,7 @@ def _qr_matrix(text):
 
 class TablesScreen(Screen):
     title = "Tables"
+    tile_id = "tables"
     glyph = "tables"
     tile_color_key = "accent"
     scrollable = True

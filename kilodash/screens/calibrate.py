@@ -15,6 +15,7 @@ from .base import Screen
 
 class CalibrationScreen(Screen):
     title = "Touch Setup"
+    tile_id = "touch-setup"
     scrollable = False
     capture_all_taps = True          # app routes every tap straight here
 

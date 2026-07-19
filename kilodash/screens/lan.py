@@ -54,6 +54,7 @@ def _result_rows(host):
 
 class LanScreen(Screen):
     title = "LAN Scan"
+    tile_id = "lan-scan"
     glyph = "lan"
     tile_color_key = "accent"
     scrollable = True

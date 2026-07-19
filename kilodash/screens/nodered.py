@@ -31,6 +31,7 @@ N_BTNS = 6
 
 class NodeRedScreen(WebAppScreen):
     title = "Node-RED"
+    tile_id = "node-red"
     glyph = "nodered"
     tile_color_key = "bad"          # Node-RED's brand red reads well as a tile
     app_name = "Node-RED"

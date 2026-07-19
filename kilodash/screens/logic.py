@@ -42,6 +42,7 @@ def _rate_name(label):
 
 class LogicScreen(Screen):
     title = "Logic"
+    tile_id = "logic"
     glyph = "logic"
     tile_color_key = "warn"
     device_key = "la"

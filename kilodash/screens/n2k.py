@@ -80,6 +80,7 @@ FROW_H = 30                      # breakdown field rows
 
 class N2kScreen(Screen):
     title = "NMEA2K"
+    tile_id = "n2k"
     glyph = "n2k"
     tile_color_key = "warn"
     device_key = "can"

@@ -13,7 +13,7 @@ plane rides on is provisioned per [`LORAMESH.md`](LORAMESH.md).
 
 ## The model in one paragraph
 
-Your phone composes a canned message (`status`, `tile nmea2k`,
+Your phone composes a canned message (`status`, `tile n2k`,
 `svc restart signalk`, …) on the **command channel**; the Prime radio T3
 hears it and hands it to Prime over **BLE** (WiFi stays free for the web
 app); Prime's executor checks the verb against a positive allow-list, checks
@@ -41,11 +41,11 @@ log (every command received: sender, accept/reject reason, reply sent).
 | You send | You get back |
 |---|---|
 | `help` (or `?`, `menu`) | `report: status(up/temp) health(services) snap(1 metric) \| act off-grid: tile(switch screen) cap(capture) svc(restart) reboot \| 'help <verb>' for options` — grouped into what *reports* (safe anytime) and what *acts* (only off-grid) |
-| `help tile` | `tile [action]: name={home lanscan nmea2k pihealth signalk settings …}` — the exact options you can pass |
+| `help tile` | `tile [action]: name={home lan-scan n2k pi-health signal-k settings …}` — the exact options you can pass |
 | `status` | `status: up 3h04m, 47.2C, tile=home, armed=yes, rssi=-104/8.5` |
 | `health` | `health: svcs kilodash=up signalk=down…, disk 21%, mem 34%, temp 47.2C, armed=yes` |
 | `snap temp` (`mem disk load uptime wifi`) | `snap: temp=47.2` |
-| `tile nmea2k` (any launcher tile slug, `home` = launcher) | `tile: active=nmea2k` |
+| `tile n2k` (any screen's tile id, `home` = launcher) | `tile: active=n2k` |
 | `cap start can` / `cap stop can` | `cap: running target=can pid=812` / `cap: stopped target=can` |
 | `svc restart signalk` (`kilodash signalk nodered kismet`) | `svc: restarted signalk state=active` |
 | `reboot` | `reboot: scheduled in 15s` (reply first, then it acts) |
@@ -104,6 +104,9 @@ confirms the verb actually ran.
 - No reply at all: check the tile (BLE link DOWN? node not on
   `allowed_nodes` → dropped silently by contract). The session log names
   every drop reason.
-- `tile: reject bad-arg name='…'` — slug is the launcher title lowercased,
-  alnum only (`lanscan`, `pihealth`, `nmea2k`), or `home`.
+- `tile: reject bad-arg name='…'` — the name is the screen's tile id:
+  lowercase-kebab (`lan-scan`, `pi-health`, `n2k`), or `home`. Older alnum
+  spellings (`lanscan`, `pihealth`, `nmea2k`) are still accepted, so a canned
+  message from before the rename keeps working; the reply comes back with the
+  new name. `help tile` lists the current set.
 - Sent `reboot` twice in a panic: fine. `reboot: already scheduled`.

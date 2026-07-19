@@ -54,9 +54,33 @@ class _HostInfo:
         return out
 
 
-def tile_slug(title):
-    """Launcher title -> command-grammar token ('LAN Scan' -> 'lanscan')."""
+def legacy_tile_slug(title):
+    """Pre-`tile_id` command token ('LAN Scan' -> 'lanscan').
+
+    RETIRED as an identity source — `Screen.tile_id` (WEB-PROTOCOL.md §4.1) is
+    now the only one. Kept solely to generate the back-compat alias table
+    below, because these strings are sitting in canned messages on paired
+    handsets. Do not call it for anything else."""
     return "".join(c for c in title.lower() if c.isalnum())
+
+
+def build_tile_aliases(screens):
+    """Legacy alnum slug -> canonical tile_id, for tokens that changed.
+
+    `tile nmea2k` was typed into a phone's canned messages before `tile_id`
+    existed; off-grid is the worst possible place to discover it now answers
+    `reject bad-arg`. The executor normalises these at ingress, so the grammar
+    domain and `help tile` stay canonical-only — the alias is accepted, never
+    advertised. Generated, not hand-listed, so a new screen cannot forget one."""
+    aliases = {}
+    for s in screens or ():
+        tid = getattr(s, "tile_id", None)
+        if not tid:
+            continue
+        legacy = legacy_tile_slug(s.title)
+        if legacy and legacy != tid:
+            aliases[legacy] = tid
+    return aliases
 
 
 class Runtime:
@@ -66,10 +90,14 @@ class Runtime:
         cfg = dict(CONFIG_DEFAULTS)
         cfg.update(cfg_block or {})
         self.enabled = bool(cfg["enabled"])
-        self._screens = {tile_slug(s.title): s for s in (screens or [])}
+        self._screens = {s.tile_id: s for s in (screens or [])
+                         if getattr(s, "tile_id", None)}
         if screens:
             # the launcher is always addressable as plain `tile home`
+            # (LauncherScreen.tile_id is "home", so this is belt-and-braces
+            # for a host app that ships a launcher without one)
             self._screens.setdefault("home", screens[0])
+        self._tile_aliases = build_tile_aliases(screens)
         self._tile_request = None           # slug, picked up by the UI loop
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -88,7 +116,8 @@ class Runtime:
             info=info,
             request_tile_fn=self._request_tile,
             active_tile_fn=lambda: self._active_tile(),
-            tiles=set(self._screens) or None)
+            tiles=set(self._screens) or None,
+            tile_aliases=self._tile_aliases)
         self.link = MeshLink(
             self.executor,
             ble_address=cfg["ble_address"],

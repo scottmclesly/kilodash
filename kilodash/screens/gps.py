@@ -58,6 +58,7 @@ def time_authority_line(runner=system.run):
 
 class GpsScreen(Screen):
     title = "GPS"
+    tile_id = "gps"
     glyph = "gps"
     device_key = "gps"
     scrollable = False

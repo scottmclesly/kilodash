@@ -21,6 +21,7 @@ def _signal_gauge(d, th, x, y, signal):
 
 class WifiScreen(Screen):
     title = "Wi-Fi"
+    tile_id = "wi-fi"
     glyph = "wifi"
     tile_color_key = "ok"
     scrollable = True
