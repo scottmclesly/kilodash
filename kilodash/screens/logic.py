@@ -108,6 +108,37 @@ class LogicScreen(Screen):
     def content_area(self):
         return (0, OUT_TOP, self.app.w, self.app.h - OUT_TOP)
 
+
+    def model_rows(self):
+        """Capture configuration and job state. Reads job attributes directly
+        — never job.snapshot(), which takes a lock and copies."""
+        j = self.job
+        trig = (f"{self.trigger[0]} {'RISE' if self.trigger[1] == 'r' else 'FALL'}"
+                if self.trigger else "NONE")
+        rows = [
+            {"label": "CHANNELS", "value": ",".join(self._channels()) or "—",
+             "state": None},
+            {"label": "RATE", "value": str(la.SAMPLERATES[self.rate_idx][0]),
+             "state": None},
+            {"label": "SAMPLES", "value": str(la.SAMPLE_COUNTS[self.samp_idx][0]),
+             "state": None},
+            {"label": "TRIGGER", "value": trig, "state": None},
+            {"label": "DECODER",
+             "value": str(la.DECODER_PRESETS[self.preset_idx].get("label", "—")),
+             "state": None},
+        ]
+        if j is not None:
+            rows.append({"label": "CAPTURE",
+                         "value": "DONE" if j.done else "RUNNING",
+                         "state": "ok" if j.done else "caution"})
+            if getattr(j, "status", ""):
+                rows.append({"label": "STATUS", "value": str(j.status),
+                             "state": None})
+            if getattr(j, "error", None):
+                rows.append({"label": "ERROR", "value": str(j.error),
+                             "state": "fault"})
+        return rows
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         self._btns = {}

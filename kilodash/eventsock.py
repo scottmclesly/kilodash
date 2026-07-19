@@ -273,12 +273,24 @@ class EventEmitter:
         }
 
     def _tiles(self):
+        """The launcher inventory carried in ScreenSnapshot.
+
+        `available` MUST fold in hotplug presence, exactly as the home model
+        does. Reporting only `s.available()` made the snapshot claim
+        available:true for screens whose device is absent — so the web offered
+        a tile that, when tapped, bounced straight back to home via the
+        hotplug guard, and the two tile lists in the same frame disagreed
+        with each other."""
         out = []
+        devices = getattr(self.app, "devices", None)
         for s in self.app.screens:
             if not s.tile_id:
                 continue
+            present = (s.device_key is None or
+                       (devices is not None and devices.has(s.device_key)))
             out.append({"id": s.tile_id, "title": s.title,
-                        "glyph": s.glyph, "available": bool(s.available())})
+                        "glyph": s.glyph,
+                        "available": bool(present and s.available())})
         return out
 
     # ------------------------------------------------------- emit interface --

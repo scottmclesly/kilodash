@@ -79,6 +79,50 @@ class MicroKvmScreen(Screen):
         self._seen = state
         return True
 
+
+    def model_rows(self):
+        """Command-plane state. Reads gate.state() (a plain accessor) and the
+        link's cached fields — never gate.poll(), which probes SSID and host."""
+        rt = self.rt
+        if rt is None:
+            return [{"label": "PLANE", "value": "NOT WIRED", "state": "caution"}]
+        rows = [{"label": "PLANE",
+                 "value": "ENABLED" if rt.enabled else "DISABLED",
+                 "state": "ok" if rt.enabled else "caution"}]
+        try:
+            armed, reason = rt.gate.state()
+            rows.append({"label": "ARM", "value": "ARMED" if armed else "DORMANT",
+                         "state": "ok" if armed else "caution"})
+            if reason:
+                rows.append({"label": "REASON", "value": str(reason),
+                             "state": None})
+        except Exception:                       # noqa: BLE001
+            pass
+        link = getattr(rt, "link", None)
+        if link is not None:
+            st = getattr(link, "state", "?")
+            rows.append({"label": "LINK", "value": str(st).upper(),
+                         "state": {"up": "ok", "connecting": "caution",
+                                   "down": "fault"}.get(st)})
+            if getattr(link, "detail", ""):
+                rows.append({"label": "DETAIL", "value": str(link.detail),
+                             "state": None})
+            if getattr(link, "last_heard", ""):
+                rows.append({"label": "LAST HEARD", "value": str(link.last_heard),
+                             "state": None})
+            if getattr(link, "dropped", 0):
+                rows.append({"label": "DROPPED", "value": str(link.dropped),
+                             "state": "caution"})
+        ex = getattr(rt, "executor", None)
+        log = getattr(ex, "log", None) if ex is not None else None
+        if log:
+            last = log[-1]
+            rows.append({"label": "COMMANDS", "value": str(len(log)),
+                         "state": None})
+            rows.append({"label": "LAST CMD", "value": str(last.get("line", "—")),
+                         "state": None if last.get("ok") else "fault"})
+        return rows
+
     def draw_content(self, d, th):
         w = self.app.w
         rt = self.rt

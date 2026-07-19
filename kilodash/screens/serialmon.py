@@ -108,6 +108,24 @@ class SerialScreen(Screen):
             self.ports = _ports()
         return True
 
+
+    def model_rows(self):
+        """Port state and the tail of the reader deque. Never calls _ports()
+        — tick() already refreshed self.ports."""
+        rows = [
+            {"label": "PORT", "value": str(self._cur_port() or "—"), "state": None},
+            {"label": "BAUD", "value": str(BAUDS[self.baud_idx]), "state": None},
+            {"label": "LINK", "value": "OPEN" if self.open else "CLOSED",
+             "state": "ok" if self.open else "caution"},
+            {"label": "PORTS SEEN", "value": str(len(self.ports or [])),
+             "state": None},
+            {"label": "LINES", "value": str(len(self.lines)), "state": None},
+        ]
+        if self.lines:
+            rows.append({"label": "LAST", "value": str(self.lines[-1])[:60],
+                         "state": None})
+        return rows
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         y = HEADER_H + 8

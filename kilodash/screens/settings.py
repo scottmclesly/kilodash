@@ -86,6 +86,26 @@ class SettingsScreen(Screen):
         ]))
         return sections
 
+
+    def model_rows(self):
+        """Current configuration. Walks app.config.groups() directly rather
+        than _sections(), which also builds Power/Calibrate entries carrying
+        closures that are not JSON-safe."""
+        rows = [{"label": "VERSION", "value": str(__version__), "state": None}]
+        try:
+            groups = self.app.config.groups()
+        except Exception:                       # noqa: BLE001
+            return rows
+        for _group, items in (groups.items() if hasattr(groups, "items")
+                              else []):
+            for key, spec in (items.items() if hasattr(items, "items")
+                              else items):
+                if not isinstance(spec, dict) or spec.get("type") == "hidden":
+                    continue
+                rows.append({"label": str(key).replace("_", " "),
+                             "value": str(spec.get("value")), "state": None})
+        return rows
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         top = HEADER_H

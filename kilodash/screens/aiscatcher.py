@@ -129,6 +129,25 @@ class AisCatcherScreen(WebAppScreen):
         self.app.close_keyboard()
 
     # ---- rendering ----
+
+    def model_rows(self):
+        """Service rows plus receiver state. Never calls _tx_ready() or
+        available() — both shell out to `which` uncached."""
+        rows = super().model_rows()
+        v, r = self.vessels, self.msg_rate
+        rows.append({"label": "VESSELS",
+                     "value": "—" if v is None else str(v),
+                     "state": None if v is None else "ok"})
+        rows.append({"label": "MSG RATE",
+                     "value": "—" if r is None else f"{r}/MIN", "state": None})
+        rows.append({"label": "TX",
+                     "value": "TRANSMITTING" if self.transmitting else "OFF",
+                     "state": "caution" if self.transmitting else None})
+        mmsi = self.mmsi
+        if mmsi:
+            rows.append({"label": "OWN MMSI", "value": str(mmsi), "state": None})
+        return rows
+
     def draw_app(self, d, th, top):
         w = self.app.w
         gap = 8

@@ -291,6 +291,34 @@ class FilesScreen(Screen):
     def content_area(self):
         return (0, LIST_TOP, self.app.w, self.app.h - LIST_TOP)
 
+
+    def model_rows(self):
+        """Stick state and capture inventory. Never calls _refresh_lists() —
+        it stats every file; tick()/on_enter already populated the caches."""
+        busy = self._busy()
+        status = str(self.status or "—")
+        if busy:
+            mount, mstate = "TRANSFERRING", "caution"
+        elif not self.mounted:
+            mount, mstate = "STANDING BY", None
+        elif self.rw:
+            mount, mstate = "MOUNTED RW", "ok"
+        else:
+            mount, mstate = "READ-ONLY", "caution"
+        bad = status.startswith("Failed") or status == "mount failed"
+        return [
+            {"label": "USB STICK", "value": mount,
+             "state": "fault" if bad else mstate},
+            {"label": "PARTITIONS", "value": str(len(self.parts or [])),
+             "state": None},
+            {"label": "CAPTURES", "value": str(len(self.files or [])),
+             "state": None},
+            {"label": "ON STICK", "value": str(len(self.on_stick or set())),
+             "state": None},
+            {"label": "STATUS", "value": status,
+             "state": "fault" if bad else None},
+        ]
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         self._btns = {}

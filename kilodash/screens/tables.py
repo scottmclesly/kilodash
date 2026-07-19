@@ -155,6 +155,33 @@ class TablesScreen(Screen):
     def content_area(self):
         return (0, LIST_TOP, self.app.w, self.app.h - LIST_TOP)
 
+
+    def model_rows(self):
+        """Converter service state plus the table inventory tick() caches.
+        Never calls web.url() — it composes via lan_ip(), which opens a
+        socket."""
+        w = self.web
+        st = getattr(w, "state", "?")
+        inv = self.inv or []
+        rows = [
+            {"label": "SERVICE", "value": str(st).upper(),
+             "state": {"up": "ok", "starting": "caution",
+                       "error": "fault"}.get(st)},
+            {"label": "PORT", "value": str(getattr(w, "port", "—")),
+             "state": None},
+            {"label": "TABLES", "value": str(len(inv)), "state": None},
+            {"label": "ENABLED",
+             "value": str(sum(1 for t in inv if t.get("enabled"))),
+             "state": None},
+            {"label": "VERIFIED",
+             "value": str(sum(1 for t in inv if t.get("verified"))),
+             "state": None},
+        ]
+        if self.idle_secs is not None:
+            rows.append({"label": "IDLE OUT",
+                         "value": f"{int(self.idle_secs)}S", "state": None})
+        return rows
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         self._btns = {}

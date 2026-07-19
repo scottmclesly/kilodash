@@ -87,6 +87,31 @@ class WebAppScreen(Screen):
         """Y where the app-specific panel begins (below the status card)."""
         return HEADER_H + 8 + CARD_H + 10
 
+
+    def model_rows(self):
+        """Service rows shared by every web-app screen (WEB-PROTOCOL §4.6).
+
+        Reads only cached `self.web` attributes. Deliberately does NOT call
+        web.url() (composes via lan_ip(), which opens a socket), web.running
+        (probes), or available()/installed() (subprocess) — model_rows must
+        stay cheap and side-effect free."""
+        w = self.web
+        st = getattr(w, "state", "?")
+        rows = [
+            {"label": "SERVICE", "value": str(st).upper(),
+             "state": {"up": "ok", "starting": "caution",
+                       "error": "fault"}.get(st)},
+            {"label": "PORT", "value": str(getattr(w, "port", "—")),
+             "state": None},
+        ]
+        if getattr(w, "service", None):
+            rows.append({"label": "UNIT", "value": str(w.service),
+                         "state": None})
+        msg = getattr(w, "message", "")
+        if msg:
+            rows.append({"label": "LAST", "value": str(msg), "state": None})
+        return rows
+
     def draw_content(self, d, th):
         w = self.app.w
         self._btns = {}

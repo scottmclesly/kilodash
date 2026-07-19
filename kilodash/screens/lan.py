@@ -119,6 +119,34 @@ class LanScreen(Screen):
         return False
 
     # ---- rendering ----
+
+    def model_rows(self):
+        """Scan configuration and job state. Reads `self.job` attributes only —
+        never hosts_snapshot() (takes a lock and copies) and never
+        _discover_hosts, which is populated inside draw_content and is stale
+        or empty whenever the screen is not drawing."""
+        j = self.job
+        rows = [
+            {"label": "MODE", "value": str(self.mode).upper(), "state": None},
+            {"label": "TARGET", "value": str(self.target or "—"), "state": None},
+            {"label": "PORTS", "value": str(self.ports or "COMMON"),
+             "state": None},
+            {"label": "STATUS", "value": str(self.status or "—"), "state": None},
+        ]
+        if j is not None:
+            rows.append({"label": "SCAN",
+                         "value": "DONE" if j.done else "RUNNING",
+                         "state": "ok" if j.done else "caution"})
+            rows.append({"label": "HOSTS", "value": str(j.host_count),
+                         "state": None})
+            if getattr(j, "error", None):
+                rows.append({"label": "ERROR", "value": str(j.error),
+                             "state": "fault"})
+        if self.selected_ip:
+            rows.append({"label": "SELECTED", "value": str(self.selected_ip),
+                         "state": None})
+        return rows
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         out_top = self._out_top()

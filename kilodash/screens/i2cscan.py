@@ -92,6 +92,22 @@ class I2cScreen(Screen):
     def content_area(self):
         return (0, HEADER_H + 46, self.app.w, self.app.h - HEADER_H - 46)
 
+
+    def model_rows(self):
+        """Bus scan results from tick()."""
+        addrs = self.addrs or []
+        rows = [
+            {"label": "BUS", "value": f"I2C-{BUS}", "state": None},
+            {"label": "DEVICES", "value": str(len(addrs)),
+             "state": "ok" if addrs else "caution"},
+            {"label": "STATUS", "value": str(self.status or "—"), "state": None},
+        ]
+        for a in addrs[:12]:
+            hint = HINTS.get(a)
+            rows.append({"label": f"0x{a:02X}", "value": str(hint or "UNKNOWN"),
+                         "state": None if hint else "caution"})
+        return rows
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         top = HEADER_H + 46

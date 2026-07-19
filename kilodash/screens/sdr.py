@@ -232,6 +232,27 @@ class SdrScreen(Screen):
                        fill=th.muted)
             yy += 40
 
+
+    def model_rows(self):
+        """Receiver state from tick()'s cached sweep."""
+        band = BANDS[self.band] if 0 <= self.band < len(BANDS) else {}
+        rows = [
+            {"label": "BAND", "value": str(band.get("label", "—")), "state": None},
+            {"label": "MODE", "value": str(self.mode).upper(), "state": None},
+            {"label": "STATUS", "value": str(self.status or "—"), "state": None},
+            {"label": "BUSY", "value": "YES" if self._busy() else "NO",
+             "state": "caution" if self._busy() else None},
+        ]
+        if self.peak:
+            f, d = self.peak
+            rows.append({"label": "PEAK", "value": f"{f / 1e6:.3f} MHZ {d:.0f} DBM",
+                         "state": None})
+        rows.append({"label": "POINTS", "value": str(len(self.pts or [])),
+                     "state": None})
+        rows.append({"label": "DECODED", "value": str(len(self.events or [])),
+                     "state": None})
+        return rows
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         b = BANDS[self.band]

@@ -202,6 +202,24 @@ class WifiSniffScreen(Screen):
     def content_area(self):
         return (0, HEADER_H + 46, self.app.w, self.app.h - HEADER_H - 46)
 
+
+    def model_rows(self):
+        """Capture state. The uplink verdict is already folded into
+        self.status — never call _connected(), which shells out."""
+        return [
+            {"label": "CAPTURE", "value": "RUNNING" if self.running else "STOPPED",
+             "state": "ok" if self.running else None},
+            {"label": "MONITOR", "value": "ON" if self.mon else "OFF",
+             "state": "ok" if self.mon else "caution"},
+            {"label": "IFACE", "value": str(self.mon_iface or "—"), "state": None},
+            {"label": "UPLINK GUARD", "value": str(self.guard_iface or "—"),
+             "state": None},
+            {"label": "APS", "value": str(len(self.aps or [])), "state": None},
+            {"label": "STATIONS", "value": str(len(self.stations or [])),
+             "state": None},
+            {"label": "STATUS", "value": str(self.status or "—"), "state": None},
+        ]
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         top = HEADER_H + 46

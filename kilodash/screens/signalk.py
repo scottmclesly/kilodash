@@ -127,7 +127,12 @@ class SignalKScreen(WebAppScreen):
 
     def __init__(self, app):
         super().__init__(app)
-        self.model = {}
+        self.sk = {}                    # Signal K REST snapshot.
+        #                          NOT `self.model` — that name is the
+        #                          Screen.model() web-mirror hook, and an
+        #                          instance attribute would shadow the
+        #                          method, making every frame this screen
+        #                          emits an empty generic.
         self.page = 0
         # The tick is the *paint* rate (dirty-rect bands make it affordable);
         # the REST snapshot poll below is the *data* rate.
@@ -144,7 +149,7 @@ class SignalKScreen(WebAppScreen):
         token = self.app.config["signalk_token"] or None
         data = webapp.http_json(SELF_URL, timeout=0.8, token=token)
         if isinstance(data, dict):
-            self.model = data
+            self.sk = data
             return True
         return False
 
@@ -153,7 +158,7 @@ class SignalKScreen(WebAppScreen):
         best = None
         for _, metrics in PAGES:
             for _, path, _conv, _unit, _dec in metrics:
-                leaf = _leaf(self.model, path)
+                leaf = _leaf(self.sk, path)
                 a = _age(leaf.get("timestamp")) if leaf else None
                 if a is not None and (best is None or a < best):
                     best = a
@@ -190,7 +195,7 @@ class SignalKScreen(WebAppScreen):
 
     # ---- value formatting ----
     def _display(self, path, conv, unit, dec):
-        leaf = _leaf(self.model, path)
+        leaf = _leaf(self.sk, path)
         if path == "navigation.position":
             if leaf and isinstance(leaf.get("value"), dict):
                 fresh = (_age(leaf.get("timestamp")) or 1e9) < 15
@@ -206,6 +211,19 @@ class SignalKScreen(WebAppScreen):
         return (s[:6], unit)
 
     # ---- rendering ----
+
+    def model_rows(self):
+        """Service rows plus a coarse data-presence readout.
+
+        Deliberately does not walk every metric in PAGES: _min_age()/_display()
+        parse timestamps per value, and model_rows runs on the render thread."""
+        rows = super().model_rows()
+        model = getattr(self, "sk", None) or {}
+        rows.append({"label": "DATA",
+                     "value": f"{len(model)} GROUP(S)" if model else "NONE",
+                     "state": "ok" if model else "caution"})
+        return rows
+
     def draw_app(self, d, th, top):
         w = self.app.w
         panel_top = top
@@ -259,7 +277,7 @@ class SignalKScreen(WebAppScreen):
         ages, srcs = [], set()
         for _, metrics in PAGES:
             for (_, path, _c, _u, _dp) in metrics:
-                leaf = _leaf(self.model, path)
+                leaf = _leaf(self.sk, path)
                 if not leaf:
                     continue
                 a = _age(leaf.get("timestamp"))

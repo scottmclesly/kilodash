@@ -73,6 +73,35 @@ class WifiScreen(Screen):
     def content_area(self):
         return (0, HEADER_H + 50, self.app.w, self.app.h - HEADER_H - 50)
 
+
+    def model_rows(self):
+        """Radio state and the connected network, from tick()'s cached scan."""
+        nets = self.nets or []
+        cur = next((n for n in nets if n.get("in_use")), None)
+        rows = [
+            {"label": "RADIO", "value": "ON" if self.enabled else "OFF",
+             "state": "ok" if self.enabled else "caution"},
+            {"label": "SSID",
+             "value": str(cur["ssid"]) if cur else "NOT CONNECTED",
+             "state": "ok" if cur else "caution"},
+        ]
+        if cur:
+            rows.append({"label": "SIGNAL", "value": f"{cur.get('signal', 0)}%",
+                         "state": "ok" if (cur.get("signal") or 0) >= 50
+                                  else "caution"})
+            if cur.get("chan"):
+                rows.append({"label": "CHANNEL", "value": str(cur["chan"]),
+                             "state": None})
+            if cur.get("security"):
+                rows.append({"label": "SECURITY", "value": str(cur["security"]),
+                             "state": None})
+        rows.append({"label": "IN RANGE", "value": str(len(nets)), "state": None})
+        rows.append({"label": "SAVED", "value": str(len(self.known or ())),
+                     "state": None})
+        rows.append({"label": "STATUS", "value": str(self.status or "—"),
+                     "state": None})
+        return rows
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         top = HEADER_H + 50

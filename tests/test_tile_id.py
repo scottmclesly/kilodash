@@ -260,5 +260,48 @@ class ExecutorAcceptsLegacyTokens(unittest.TestCase):
         self.assertIn("bad-arg", self.ex.handle("tile nosuchscreen"))
 
 
+class ScreenApiIsNotShadowed(unittest.TestCase):
+    """No screen may assign an instance attribute over the Screen web-mirror
+    API. SignalKScreen did exactly this — it kept its REST snapshot in
+    `self.model`, which shadowed the `model()` method, so calling it raised
+    TypeError, the emitter caught it, and that screen silently mirrored as an
+    EMPTY generic panel. Nothing failed; it just rendered nothing.
+
+    That is invisible to every other kind of test, so it is pinned here by
+    parsing the source: an assignment is a shadow whether or not it is ever
+    exercised."""
+
+    API = {"model", "model_rows", "model_buttons", "handle_button",
+           "tile_id", "available", "tick", "render", "draw_content"}
+
+    def test_no_instance_attribute_shadows_a_screen_method(self):
+        import ast
+        import pathlib
+        screens = pathlib.Path(REPO) / "kilodash" / "screens"
+        for path in sorted(screens.glob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"), str(path))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Assign):
+                    continue
+                for t in node.targets:
+                    if (isinstance(t, ast.Attribute)
+                            and isinstance(t.value, ast.Name)
+                            and t.value.id == "self"
+                            and t.attr in self.API):
+                        self.fail(
+                            f"{path.name}:{t.lineno} assigns self.{t.attr}, "
+                            f"shadowing the Screen API method of the same "
+                            f"name — that screen will mirror as an empty "
+                            f"generic panel with no error")
+
+    def test_every_screen_can_build_a_model_row_list(self):
+        """model_rows() must be declared as a method on every screen that
+        overrides it — a callable, never a value."""
+        for cls in ALL_SCREEN_CLASSES:
+            with self.subTest(screen=cls.__name__):
+                self.assertTrue(callable(getattr(cls, "model", None)))
+                self.assertTrue(callable(getattr(cls, "model_rows", None)))
+
+
 if __name__ == "__main__":
     unittest.main()

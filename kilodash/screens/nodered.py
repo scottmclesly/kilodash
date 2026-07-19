@@ -68,6 +68,17 @@ class NodeRedScreen(WebAppScreen):
                                                             f"Trigger {i + 1}"))[:10]
         return True
 
+
+    def model_rows(self):
+        """Service rows plus the six flow-driven feedback fields."""
+        rows = super().model_rows()
+        for f in (self.fields or []):
+            val = str(f.get("value", "—"))
+            if val and val != "—":
+                rows.append({"label": str(f.get("label", "?")),
+                             "value": val, "state": None})
+        return rows
+
     def draw_app(self, d, th, top):
         w = self.app.w
         gap = 8

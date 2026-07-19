@@ -223,6 +223,24 @@ class PomodoroScreen(Screen):
         return False
 
     # ---- rendering ----
+
+    def model_rows(self):
+        """Timer state. Maintained by the background loop, so it is valid
+        before any tick or draw."""
+        ph = PHASES.get(self.phase, {})
+        left = int(self._remaining())
+        return [
+            {"label": "PHASE", "value": str(ph.get("label", self.phase)).upper(),
+             "state": "ok" if self.phase == "work" else "caution"},
+            {"label": "REMAINING", "value": f"{left // 60:02d}:{left % 60:02d}",
+             "state": None},
+            {"label": "STATE", "value": "RUNNING" if self.running else "HOLDING",
+             "state": "ok" if self.running else "caution"},
+            {"label": "CYCLE", "value": f"{self.work_in_set}/{LONG_EVERY}",
+             "state": None},
+            {"label": "COMPLETED", "value": str(self.completed), "state": None},
+        ]
+
     def draw_content(self, d, th):
         w = self.app.w
         self._btns = {}
