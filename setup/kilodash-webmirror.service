@@ -1,0 +1,25 @@
+[Unit]
+Description=Scottina web mirror (LAN touchscreen mirror, WEB-PROTOCOL.md)
+After=network-online.target kilodash.service
+Wants=network-online.target
+# Not Requires=: the mirror must start, and stay up, whether or not kilodash
+# is running. It reconnects to the event socket on its own with backoff, and
+# a browser during an outage sees the stale-state presentation rather than a
+# dead port. The panel is never made to depend on the mirror.
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/kilodash
+ExecStart=/usr/bin/python3 -m kilodash.webmirror
+# Always-on, unlike kilodash-tables.service: that one is started on demand by
+# its tile and exits when idle, so a clean exit must stay stopped. This is a
+# monitoring surface — someone reaching for scottina.local expects it to be
+# there, so it restarts.
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

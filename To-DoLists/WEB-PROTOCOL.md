@@ -48,9 +48,26 @@ Two deliberately asymmetric channels. **Do not collapse them.**
 | Direction | Channel | Framing |
 |---|---|---|
 | Events out (box → web) | Unix domain socket, `SOCK_STREAM` | newline-delimited JSON (§2) |
-| Events out (backend → browser) | WebSocket | one JSON frame per message |
+| Events out (backend → browser) | **Server-Sent Events** (`text/event-stream`) | one JSON frame per `data:` event |
 | Commands in (browser → backend) | HTTP `POST /api/input` | JSON body (§6) |
 | Commands in (backend → box) | the same Unix socket, reverse direction | newline-delimited JSON |
+
+**Why SSE and not WebSocket** (amended 2026-07-19; v1.0 drafted WebSocket).
+The event channel is **one-way by construction** — the box narrates, the
+browser listens, and every command travels the REST path instead. A
+bidirectional transport buys nothing the design permits us to use, and its
+back-channel is a standing invitation to the very thing §1 forbids: sneaking
+commands onto the event socket.
+
+SSE is that asymmetry expressed in the transport itself. It also carries its
+own weight practically: it needs no dependency beyond Flask (`flask_sock` is
+not packaged for this box), and `EventSource` reconnects on its own, so §3's
+required auto-retry-with-backoff is browser behaviour rather than
+hand-written client code that has to be got right.
+
+The known costs are accepted deliberately: SSE is text-only (this protocol is
+JSON — irrelevant), and browsers cap connections per origin (one stream per
+tab, and the box only tolerates one subscriber anyway, §1).
 
 **Why the asymmetry.** Events out are the narrative — the box is master and
 drives what is true, continuously, at machine pace. Commands in are slow,
@@ -153,7 +170,7 @@ mid-stream — carrying the **current monotonic `seq`**, never `seq: 1` again (t
 `seq: 1` in the example above is the first-frame case only). A mid-stream
 `Hello` updates the palette **and nothing else**: the consumer re-themes live
 and MUST NOT treat it as a new connection, MUST NOT discard its model, and MUST
-NOT resync. Only a fresh socket / WebSocket connection begins with `seq: 1` and
+NOT resync. Only a fresh socket / SSE connection begins with `seq: 1` and
 the snapshot handshake of §5. Everything else about the Alien /
 Semiotic-Standard instrument idiom — hard-edged strips, spaced-caps mono
 readouts, segmented gauges, corner registration brackets, hazard striping — is
@@ -465,8 +482,8 @@ has never heard of (§9).
 
 **Snapshot-on-connect is mandatory.** The box sends `Hello` then
 `ScreenSnapshot` on every accepted socket connection, unprompted. The backend
-sends its buffered `ScreenSnapshot` as the **first message on every new
-WebSocket connection**, before any delta.
+sends its buffered `ScreenSnapshot` as the **first event on every new SSE
+connection**, before any delta.
 
 A client renders nothing until it holds a snapshot. Deltas arriving before one
 are discarded, not queued — patching from an assumed base state is exactly the
@@ -476,7 +493,7 @@ Resync is always **re-request the snapshot**, never reconcile. The three
 triggers:
 
 1. `rev` gap or `seq` gap detected (§3);
-2. WebSocket reconnect after a drop;
+2. SSE reconnect after a drop (`EventSource` retries on its own);
 3. an `Error` frame with `code: "resync"` (§8).
 
 **Resync is coalesced, not per-trigger.** A consumer with a `request_snapshot`
@@ -518,8 +535,23 @@ Responses:
 |---|---|
 | `202 Accepted` | queued for the UI thread. **Not** "it happened" — see below |
 | `400 Bad Request` | malformed body, or `action` not in the table |
-| `409 Conflict` | well-formed but not valid *now* (tile unavailable, button not on the active screen) |
 | `503 Service Unavailable` | the box socket is not connected |
+
+**There is no `409`** (amended 2026-07-19; v1.0 drafted one). The draft used it
+for "well-formed but not valid *now*" — tile unavailable, button not on the
+active screen. Both are **semantic** judgements, and semantics belong to the
+box, not the backend: the backend validates the envelope only and deliberately
+does not know what a screen means.
+
+So a 409 could only be produced by having the backend block on a round-trip to
+the box for every command, which would make the command path synchronous and
+put a second authority in the system. Instead, a semantically invalid command
+is accepted with `202` and then **refused asynchronously by the box** with an
+§8 `bad_command` Error on the event stream.
+
+That is consistent rather than a compromise: `202` already means *accepted, not
+applied*, and the event stream is already the only path by which the mirror
+learns what became true. A rejection is just another thing that became true.
 
 **`202` means accepted, not applied.** Commands are asynchronous by
 construction: the backend hands the action to the box, the box applies it on the

@@ -42,6 +42,10 @@ ALLOWED_NET_SEND = {
     "tools/mirror-tap.py",  # bench subscriber: reads the same Unix socket and
                             # sends §6 commands back down it. Same AF_UNIX
                             # justification, and covered by the same test.
+    "kilodash/webmirror.py",  # web mirror backend: one sendall() forwarding a
+                            # validated §6 command down the SAME AF_UNIX box
+                            # socket. It also binds TCP for the LAN UI, which
+                            # is its whole purpose and is not a bus surface.
 }
 
 SEND_ATTRS = {"send", "sendall", "sendto", "sendmsg", "sendfile"}
@@ -169,7 +173,12 @@ class TestWebMirrorAddsNoTxSurface(unittest.TestCase):
     rather than trusted: the mirror is allow-listed for a Unix socket, and
     these pin that the allowance stays exactly that narrow."""
 
-    WEB_PATH = ("kilodash/eventsock.py", "tools/mirror-tap.py")
+    # Every module in the web-mirror path. None may touch CAN, ever.
+    WEB_PATH = ("kilodash/eventsock.py", "tools/mirror-tap.py",
+                "kilodash/webmirror.py")
+    # The subset that must speak ONLY to the box, never to a network. The
+    # backend is excluded on purpose: binding TCP for the LAN UI is its job.
+    BOX_LOCAL = ("kilodash/eventsock.py", "tools/mirror-tap.py")
 
     def test_mirror_touches_no_can_constants(self):
         """The net-send allowance is only safe while the module is not a CAN
@@ -188,7 +197,7 @@ class TestWebMirrorAddsNoTxSurface(unittest.TestCase):
                                  f"send() allowance would then cover the bus")
 
     def test_mirror_opens_only_unix_sockets(self):
-        for rel in self.WEB_PATH:
+        for rel in self.BOX_LOCAL:
             with self.subTest(module=rel):
                 with open(os.path.join(ROOT, rel)) as f:
                     src = f.read()
