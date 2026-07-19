@@ -22,6 +22,8 @@ import math
 import threading
 import time
 
+from PIL import ImageDraw
+
 from .. import theme as T
 from ..widgets import Button
 from .base import Screen, HEADER_H
@@ -29,11 +31,11 @@ from .base import Screen, HEADER_H
 LONG_EVERY = 4
 PHASES = {
     "work":  {"label": "WORK CYCLE",    "secs": 25 * 60, "col": "ok",
-              "glyph": "work"},
+              "glyph": "work", "verb": "RESUME DUTY"},
     "short": {"label": "REST INTERVAL", "secs": 5 * 60,  "col": "warn",
-              "glyph": "rest"},
+              "glyph": "rest", "verb": "STAND DOWN"},
     "long":  {"label": "EXTENDED REST", "secs": 15 * 60, "col": "warn",
-              "glyph": "deeprest"},
+              "glyph": "deeprest", "verb": "STAND DOWN"},
 }
 
 # instrument geometry (320×480 portrait, header above)
@@ -60,19 +62,25 @@ def _hazard(d, box, col, step=9, width=3):
         x += step
 
 
-def _phase_glyph(d, key, cx, cy, r, c):
-    """Banner-sized Semiotic-Standard companions to the launcher pictograms."""
+def _phase_glyph(d, key, cx, cy, r, c, t=None):
+    """Banner-sized Semiotic-Standard companions to the launcher pictograms.
+    With `t` (seconds since the splash went up) the glyph animates: the work
+    chronometer sweeps, the rest bars pulse, the deeprest horizon breathes."""
     lw = max(2, round(r / 5))
     d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=c, width=lw)
     if key == "work":       # chronometer: elapsed sector filled
         s = r * 0.68
-        d.pieslice((cx - s, cy - s, cx + s, cy + s), 270, 30, fill=c)
+        end = 30 if t is None else 270 + (t * 90) % 360
+        d.pieslice((cx - s, cy - s, cx + s, cy + s), 270, end, fill=c)
     elif key == "rest":     # stand-down bars
-        bw, bh = r * 0.16, r * 0.5
+        bw = r * 0.16
+        bh = r * 0.5 if t is None else r * (0.42 + 0.1 * math.sin(t * 5))
         for dx in (-r * 0.3, r * 0.3):
             d.rectangle((cx + dx - bw, cy - bh, cx + dx + bw, cy + bh), fill=c)
     else:                   # deeprest: below the horizon
         s = r * 0.68
+        if t is not None:
+            s *= 0.86 + 0.14 * math.sin(t * 3)
         d.pieslice((cx - s, cy - s, cx + s, cy + s), 0, 180, fill=c)
 
 
@@ -128,8 +136,9 @@ class PomodoroScreen(Screen):
         if autostart:
             self._end = time.monotonic() + self._left
         if announce:
-            verb = "resume duty" if nxt == "work" else "stand down"
-            self.app.toast(f"{PHASES[nxt]['label']} — {verb}", secs=4)
+            # interstitial splash carries the announcement (renders over
+            # whatever screen is up); the flash blinks through it
+            self.app.show_overlay(self._splash_drawer(nxt), secs=3.2)
             self.app.flash()          # no speaker — blink the screen to get attention
         self.app.dirty = True
 
@@ -150,6 +159,66 @@ class PomodoroScreen(Screen):
 
     def _skip(self):
         self._advance(credit=False, autostart=self.running)
+        # manual skip gets the incoming-phase card too, but shorter and
+        # without the flash — you're already looking at the panel
+        self.app.show_overlay(self._splash_drawer(self.phase), secs=2.0)
+
+    # ---- transition splash ----
+    def _splash_drawer(self, phase_key):
+        """Frame painter for app.show_overlay: a full-screen Semiotic-Standard
+        card announcing the incoming phase — rotating scanner ring around the
+        animated phase glyph, scrolling caution bands on rest phases, orders
+        in spaced caps. Pure function of t; state is captured at trigger time
+        (the clock thread calls this, the UI thread draws the frames)."""
+        ph = PHASES[phase_key]
+        cycle = (f"CYCLE {min(self.work_in_set + 1, LONG_EVERY)}/{LONG_EVERY}"
+                 if phase_key == "work"
+                 else f"AFTER CYCLE {self.work_in_set}/{LONG_EVERY}")
+
+        def draw(img, th, t):
+            w, h = img.size
+            d = ImageDraw.Draw(img)
+            col = getattr(th, ph["col"])
+            d.rectangle((0, 0, w, h), fill=th.bg)
+            # corner registration brackets
+            for x, sx in ((16, 1), (w - 16, -1)):
+                for y, sy in ((16, 1), (h - 16, -1)):
+                    d.line((x, y, x + sx * 18, y), fill=th.muted, width=2)
+                    d.line((x, y, x, y + sy * 18), fill=th.muted, width=2)
+            # top/bottom bands: caution stripes crawl on rest, rules on work
+            for y0, y1 in ((52, 72), (h - 72, h - 52)):
+                if ph["col"] == "warn":
+                    bh = y1 - y0
+                    x = -bh - 18 + (t * 30) % 18
+                    while x < w:
+                        d.line((x, y1, x + bh, y0), fill=col, width=4)
+                        x += 18
+                else:
+                    d.line((0, y0, w, y0), fill=th.card_hi, width=2)
+                    d.line((0, y1, w, y1), fill=th.card_hi, width=2)
+            # scanner ring: a lit arc sweeping the segment track
+            cx, cy = w // 2, h // 2 - 30
+            lead = int(t / 2.0 * SEGS)       # one revolution every 2 s
+            for i in range(SEGS):
+                a = math.radians(-90 + i * 360 / SEGS)
+                lit = (i - lead) % SEGS < 12
+                d.line((cx + 96 * math.cos(a), cy + 96 * math.sin(a),
+                        cx + 112 * math.cos(a), cy + 112 * math.sin(a)),
+                       fill=col if lit else th.card_hi, width=4)
+            _phase_glyph(d, ph["glyph"], cx, cy, 60, col, t=t)
+            # incoming phase + orders + cycle tally
+            f = T.font(22, bold=True, mono=True)
+            lw = d.textlength(ph["label"], font=f)
+            d.text(((w - lw) / 2, cy + 126), ph["label"], font=f, fill=col)
+            sub = _spaced(ph["verb"])
+            f_s = T.font(12, bold=True, mono=True)
+            sw = d.textlength(sub, font=f_s)
+            d.text(((w - sw) / 2, cy + 160), sub, font=f_s, fill=th.fg)
+            f_c = T.font(11, mono=True)
+            cw = d.textlength(cycle, font=f_c)
+            d.text(((w - cw) / 2, cy + 184), cycle, font=f_c, fill=th.muted)
+
+        return draw
 
     # ---- lifecycle ----
     def on_enter(self):

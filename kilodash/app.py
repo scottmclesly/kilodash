@@ -96,6 +96,7 @@ class App:
         self.keyboard = None
         self._toast = None
         self._flash = None              # (start, until, period) full-screen attention flash
+        self._overlay = None            # (drawer, start, until) animated interstitial
         self.backlight = self._find_backlight()
 
         # Micro KVM off-grid command plane (MICROKVM-PROTOCOL.md). The BLE/
@@ -300,6 +301,19 @@ class App:
         self.last_activity = now
         self.dirty = True
 
+    # ---------------------------------------------------------------- overlay
+    def show_overlay(self, drawer, secs=3.0):
+        """Full-screen animated interstitial drawn over whatever screen is up
+        (e.g. the Pomodoro phase-change splash). `drawer(img, th, t)` paints
+        one frame, t = seconds since the overlay went up. Wakes the dimmer;
+        a tap dismisses it early. Safe to call from a background thread."""
+        now = time.monotonic()
+        self._overlay = (drawer, now, now + secs)
+        self.dimmed = False
+        self._set_backlight(100)
+        self.last_activity = now
+        self.dirty = True
+
     # -------------------------------------------------------------- dimming
     def _wake(self):
         self.last_activity = time.monotonic()
@@ -426,6 +440,14 @@ class App:
             else:
                 self._toast = None
 
+        if self._overlay:
+            drawer, start, until = self._overlay
+            now = time.monotonic()
+            if now < until:
+                drawer(img, th, now - start)
+            else:
+                self._overlay = None     # expiry frame is already a full repaint
+
         if self._flash:
             start, until, period = self._flash
             now = time.monotonic()
@@ -516,6 +538,12 @@ class App:
         while self.running:
             for kind, x, y in self.touch.poll():
                 if kind == "down":
+                    if self._overlay:        # tap anywhere lifts the interstitial
+                        self._overlay = None
+                        self._g = None
+                        self._wake()
+                        self.dirty = True
+                        continue
                     if self._wake():
                         self._g = None
                         continue
@@ -552,7 +580,7 @@ class App:
                 self._toast = None
                 self.dirty = True
 
-            if self._flash:                 # keep redrawing so the blink animates
+            if self._flash or self._overlay:   # keep redrawing so animations run
                 self.dirty = True
 
             if self._dirty:
