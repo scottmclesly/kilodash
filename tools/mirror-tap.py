@@ -65,6 +65,10 @@ class Tap:
     def connect(self):
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         s.connect(self.path)
+        # A timeout, not blocking: an idle stream is the NORMAL case (the
+        # emitter only speaks on change), and without this the --stats
+        # deadline is never reached because the loop sits in recv() forever.
+        s.settimeout(0.5)
         self.sock = s
         return s
 
@@ -73,10 +77,15 @@ class Tap:
         self.sock.sendall((json.dumps(body) + "\n").encode())
         return body
 
-    def frames(self):
+    def frames(self, deadline=None):
         buf = b""
         while True:
-            chunk = self.sock.recv(65536)
+            if deadline and time.time() > deadline:
+                return
+            try:
+                chunk = self.sock.recv(65536)
+            except socket.timeout:
+                continue            # idle is normal — emit is on change only
             if not chunk:
                 return
             buf += chunk
@@ -225,7 +234,7 @@ def main():
     deadline = time.time() + args.stats if args.stats else None
     t0 = time.time()
     try:
-        for f, raw in tap.frames():
+        for f, raw in tap.frames(deadline):
             notes = tap.check(f)
             if args.raw:
                 print(raw.decode("utf-8", "replace"))

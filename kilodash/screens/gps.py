@@ -133,6 +133,53 @@ class GpsScreen(Screen):
         return False
 
     # ---------------------------------------------------------------- drawing
+
+    def model_rows(self):
+        """Generic model rows (WEB-PROTOCOL.md §4.6) — reads tick()'s cached
+        `self._st`, never touches gpsd. `state` follows the panel: no fix is
+        caution (the receiver is working, it just has not solved yet), a
+        listener error is a fault."""
+        st = getattr(self, "_st", None) or {}
+        tpv = st.get("tpv") or {}
+        sky = st.get("sky") or {}
+        sats = sky.get("satellites") or []
+        used = sum(1 for s in sats if s.get("used"))
+        fix = self._fix_name()
+
+        def fmt(v, spec, dash="—"):
+            try:
+                return spec % float(v)
+            except (TypeError, ValueError):
+                return dash
+
+        rows = [
+            {"label": "FIX", "value": str(fix),
+             "state": "ok" if used >= 4 else "caution"},
+            {"label": "SATS", "value": "%d/%d used" % (used, len(sats)),
+             "state": "ok" if used >= 4 else "caution"},
+            {"label": "LAT", "value": fmt(tpv.get("lat"), "%.5f"),
+             "state": None},
+            {"label": "LON", "value": fmt(tpv.get("lon"), "%.5f"),
+             "state": None},
+            {"label": "ALT",
+             "value": fmt(tpv.get("altMSL", tpv.get("alt")), "%.1f m"),
+             "state": None},
+            {"label": "HDOP", "value": fmt(sky.get("hdop"), "%.1f"),
+             "state": None},
+            {"label": "TIME", "value": (tpv.get("time") or "—")[:19],
+             "state": None},
+        ]
+        if self.chrony_line:
+            rows.append({"label": "CLOCK", "value": str(self.chrony_line),
+                         "state": None})
+        if st.get("error"):
+            rows.append({"label": "ERROR", "value": str(st["error"]),
+                         "state": "fault"})
+        elif not st.get("connected", True):
+            rows.append({"label": "GPSD", "value": "disconnected",
+                         "state": "fault"})
+        return rows
+
     def draw_content(self, d, th):
         self._draw_sky(d, th)
         self._draw_status(d, th)

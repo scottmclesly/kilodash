@@ -46,6 +46,62 @@ class HealthScreen(Screen):
             return th.warn
         return th.ok
 
+
+    def model_rows(self):
+        """Generic model rows (WEB-PROTOCOL.md §4.6) — reads tick()'s cached
+        `self.d`, never re-polls. Colour semantics match the panel exactly:
+        the SoC throttle point is a genuine fault, 65C is caution."""
+        m = getattr(self, "d", None) or {}
+
+        def temp_state(v):
+            try:
+                t = float(v)
+            except (TypeError, ValueError):
+                return None
+            return "fault" if t >= 80 else ("caution" if t >= 65 else "ok")
+
+        def pct_state(v):
+            try:
+                p = float(str(v).rstrip("%"))
+            except (TypeError, ValueError):
+                return None
+            return "fault" if p >= 90 else ("caution" if p >= 75 else "ok")
+
+        load = m.get("loadavg") or []
+        rows = [
+            {"label": "TEMP", "value": "%s C" % m.get("temp_c", "—"),
+             "state": temp_state(m.get("temp_c"))},
+            {"label": "CPU", "value": "%s MHz" % m.get("cpu_mhz", "—"),
+             "state": None},
+            {"label": "LOAD", "value": " ".join(str(x) for x in load[:3]) or "—",
+             "state": None},
+            {"label": "MEM", "value": "%s%% (%s/%s MB)"
+                                      % (m.get("mem_pct", "—"),
+                                         m.get("mem_used_mb", "—"),
+                                         m.get("mem_total_mb", "—")),
+             "state": pct_state(m.get("mem_pct"))},
+            {"label": "DISK", "value": "%s%% (%s/%s MB)"
+                                       % (m.get("disk_pct", "—"),
+                                          m.get("disk_used", "—"),
+                                          m.get("disk_total", "—")),
+             "state": pct_state(m.get("disk_pct"))},
+            {"label": "UPTIME", "value": str(m.get("uptime", "—")),
+             "state": None},
+        ]
+        if m.get("wifi_ssid"):
+            rows.append({"label": "WIFI",
+                         "value": "%s (%s%%)" % (m["wifi_ssid"],
+                                                 m.get("wifi_signal", "?")),
+                         "state": None})
+        # `throttled` is a real bool from system.health(); guard against a
+        # stringified "False" too, which would otherwise read as a fault.
+        thr = m.get("throttled")
+        if thr and str(thr).lower() not in ("false", "0", "0x0"):
+            rows.append({"label": "THROTTLED",
+                         "value": str(m.get("throttled_code", thr)),
+                         "state": "fault"})
+        return rows
+
     def draw_content(self, d, th):
         w = self.app.w
         m = self.d
