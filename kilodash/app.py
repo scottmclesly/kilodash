@@ -236,6 +236,19 @@ class App:
     def go_home(self):
         self.open_screen(self.launcher)
 
+    def open_named_screen(self):
+        """Dev seam: KILODASH_OPEN=<title-slug> (e.g. `signal-k`) jumps
+        straight to that screen after the splash, so a UI change can be
+        eyeballed over SSH without tapping the panel."""
+        want = os.environ.get("KILODASH_OPEN", "").strip().lower()
+        if not want:
+            return
+        for scr in self.screens:
+            if scr.title.lower().replace(" ", "-") == want and scr.available():
+                self.open_screen(scr)
+                return
+        print(f"KILODASH_OPEN: no screen '{want}'", file=sys.stderr)
+
     def open_calibration(self):
         self.calibration.reset()
         self.open_screen(self.calibration)
@@ -499,6 +512,7 @@ class App:
 
     def _loop(self):
         self._hold_splash()
+        self.open_named_screen()
         while self.running:
             for kind, x, y in self.touch.poll():
                 if kind == "down":

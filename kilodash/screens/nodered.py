@@ -3,19 +3,20 @@
 Launches Node-RED (systemd `nodered.service`, or the `node-red` binary), confirms
 its editor is serving on :1880, and shows the URL to open it from a laptop.
 
-Custom panel: **4 feedback fields** + **4 trigger buttons** you wire to your own
+Custom panel: **6 feedback fields** + **6 trigger buttons** you wire to your own
 flow. The contract kilodash speaks (all on the Pi, so localhost):
 
   Feedback  GET  http://127.0.0.1:1880/kilodash/state
-            → {"fields": [{"label": "Temp", "value": "21.4"},   # up to 4
+            → {"fields": [{"label": "Temp", "value": "21.4"},   # up to 6
                           {"label": "Door", "value": "open"}, ...]}
-  Triggers  POST http://127.0.0.1:1880/kilodash/btn/1 .. /btn/4
+  Triggers  POST http://127.0.0.1:1880/kilodash/btn/1 .. /btn/6
             → button label read from the same /state payload, if present:
               {"buttons": [{"label": "Fan"}, ...]}
 
 Import the ready-made flow at setup/nodered-kilodash-flow.json and read
 setup/NODE-RED.md for the full wire-up guide (feedback fields come from flow
-context f1..f4). Until the flow exists, fields show "—" and buttons post
+context f1..f6; older 4-field flows keep working, extra rows just show "—" /
+default labels). Until the flow exists, fields show "—" and buttons post
 harmlessly (404) — the panel still launches and confirms.
 """
 
@@ -24,6 +25,8 @@ from ..widgets import Button, rrect
 from .webapp_base import WebAppScreen
 
 BASE = "http://127.0.0.1:1880/kilodash"
+N_FIELDS = 6
+N_BTNS = 6
 
 
 class NodeRedScreen(WebAppScreen):
@@ -37,8 +40,9 @@ class NodeRedScreen(WebAppScreen):
 
     def __init__(self, app):
         super().__init__(app)
-        self.fields = [{"label": f"Field {i + 1}", "value": "—"} for i in range(4)]
-        self.buttons = [{"label": f"Trigger {i + 1}"} for i in range(4)]
+        self.fields = [{"label": f"Field {i + 1}", "value": "—"}
+                       for i in range(N_FIELDS)]
+        self.buttons = [{"label": f"Trigger {i + 1}"} for i in range(N_BTNS)]
         self._flash = {}            # btn index -> monotonic expiry for tap feedback
 
     def poll_app(self):
@@ -51,13 +55,13 @@ class NodeRedScreen(WebAppScreen):
         if isinstance(f, list) and f:
             self.fields = [{"label": str(x.get("label", f"Field {i + 1}"))[:10],
                             "value": str(x.get("value", "—"))[:9]}
-                           for i, x in enumerate(f[:4])]
-            while len(self.fields) < 4:
+                           for i, x in enumerate(f[:N_FIELDS])]
+            while len(self.fields) < N_FIELDS:
                 self.fields.append({"label": f"Field {len(self.fields) + 1}",
                                     "value": "—"})
         b = data.get("buttons")
         if isinstance(b, list) and b:
-            for i in range(4):
+            for i in range(N_BTNS):
                 if i < len(b) and isinstance(b[i], dict):
                     self.buttons[i]["label"] = str(b[i].get("label",
                                                             f"Trigger {i + 1}"))[:10]
@@ -68,11 +72,12 @@ class NodeRedScreen(WebAppScreen):
         gap = 8
         cw = (w - 12 * 2 - gap) / 2
 
-        # 4 feedback fields (2x2)
+        # 6 feedback fields (3x2)
         d.text((14, top), "DEBUG FEEDBACK", font=T.font(11, bold=True),
                fill=th.muted)
         top += 18
         fh = 46
+        rows = (len(self.fields) + 1) // 2
         for i, fld in enumerate(self.fields):
             r, c = divmod(i, 2)
             x0 = 12 + c * (cw + gap)
@@ -82,12 +87,11 @@ class NodeRedScreen(WebAppScreen):
             d.text((x0 + 10, y0 + 21), fld["value"],
                    font=T.font(18, bold=True, mono=True), fill=th.accent)
 
-        # 4 trigger buttons (2x2)
-        top += 2 * (fh + gap) + 6
+        # 6 trigger buttons (3x2)
+        top += rows * (fh + gap) - gap + 6
         d.text((14, top), "TRIGGERS", font=T.font(11, bold=True), fill=th.muted)
         top += 18
         bh = 44
-        self._btns = {k: v for k, v in self._btns.items() if k == "power"}
         for i, btn in enumerate(self.buttons):
             r, c = divmod(i, 2)
             x0 = 12 + c * (cw + gap)
@@ -100,7 +104,7 @@ class NodeRedScreen(WebAppScreen):
             self._btns[f"btn{i}"] = b
 
     def handle_app_tap(self, x, y):
-        for i in range(4):
+        for i in range(N_BTNS):
             b = self._btns.get(f"btn{i}")
             if b and b.hit(x, y):
                 code = webapp.http_post(f"{BASE}/btn/{i + 1}", timeout=1.5)

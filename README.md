@@ -266,11 +266,14 @@ toggles — edit it over SSH and restart the service. Defaults target the
 ## Web-app launch terminal
 
 Beyond the built-in screens, Scottina fronts **bigger packages that serve their
-own browser UI**. Opening one of these screens *launches the app*, waits until
-its port actually answers (a real "✓ web UI confirmed", not just "spawned"),
-and shows the **URL:port** to open the full interface from a phone or laptop —
-plus a compact native panel of controls and live feedback. If the app was
-already serving (autostarted at boot), it's adopted instead of duplicated.
+own browser UI**. Opening one of these screens *launches the app* and fronts it
+with **one compact status card**: its border colour is the app state (green
+only once the port actually answers — a real "✓ web UI confirmed", not just
+"spawned"), its body is the **URL:port** to open the full interface from a
+phone or laptop, and **tapping it stops the app (with a confirm) or launches
+it again**. Below the card sits a native panel of controls and live feedback.
+If the app was already serving (autostarted at boot), it's adopted instead of
+duplicated.
 
 Full user guide for all four: [docs/WEBAPPS.md](docs/WEBAPPS.md).
 
@@ -279,17 +282,18 @@ Shipped apps (tiles appear only when the app is installed):
 - **Kismet** — launches the server, confirms `:2501`, a Sniff on/off toggle that
   adds the ALFA as an uplink-safe monitor source, and a live peer list
   colour-coded by device type.
-- **Node-RED** — confirms the `:1880` editor and gives **4 assignable feedback
-  fields + 4 trigger buttons** wired to your own flow. Import
+- **Node-RED** — confirms the `:1880` editor and gives **6 assignable feedback
+  fields + 6 trigger buttons** wired to your own flow. Import
   [`setup/nodered-kilodash-flow.json`](setup/nodered-kilodash-flow.json) and see
   [`setup/NODE-RED.md`](setup/NODE-RED.md) for the wire-up guide.
 - **AIS** — AIS-catcher on the RTL-SDR for live vessel/message feedback (RX), plus
   an own-MMSI field and a hardware-gated Transmit-test control for bench-checking
   a robot's AIS receiver (TX needs a HackRF/Pluto + `ais-simulator`).
 - **Signal K** — the boat's data hub as a helm glance. Confirms `:3000`, then
-  pages through vitals groups (Nav / Engine / Environment / Power, tap to cycle)
-  with a live **heartbeat** line — freshness dot + feed count — so one glance
-  tells you the NMEA2000→SK bridge is actually flowing. Never stopped on leave.
+  pages through six-value vitals groups (Nav / Engine / Environment / Power,
+  tap to cycle) with a live **heartbeat** line pinned to the bottom — freshness
+  dot + feed count — so one glance tells you the NMEA2000→SK bridge is actually
+  flowing. Never stopped on leave.
 
 Install the backends with [`setup/install-phase4.sh`](setup/install-phase4.sh)
 (idempotent; installs Node-RED, AIS-catcher, Signal K + their systemd units).

@@ -36,26 +36,34 @@ DEG = 57.2957795       # rad   -> degrees
 def _ms_kn(v):      return v * KN
 def _rad_hdg(v):    return (v * DEG) % 360          # heading/COG: 0..360
 def _rad_rel(v):    return v * DEG                  # wind angle: signed -180..180
+def _rads_degs(v):  return v * DEG                  # rate of turn: °/s
 def _k_c(v):        return v - 273.15               # Kelvin -> °C
 def _pa_bar(v):     return v / 100000.0             # Pascal -> bar
+def _pa_mbar(v):    return v / 100.0                # Pascal -> mbar (baro)
 def _hz_rpm(v):     return v * 60.0                 # Hz -> RPM (SK stores rev/s)
 def _ratio_pct(v):  return v * 100.0                # 0..1 -> %
 def _sec_hr(v):     return v / 3600.0               # seconds -> hours
+def _m3s_lph(v):    return v * 3.6e6                # m³/s -> L/h (fuel rate)
 def _id(v):         return v
 
 
 # (label, dotted path (* = first instance), converter, unit, decimals)
+# 6 metrics per page = the 3x2 grid the compact header pays for.
 PAGES = [
     ("NAV", [
         ("SOG", "navigation.speedOverGround", _ms_kn, "kn", 1),
         ("COG", "navigation.courseOverGroundTrue", _rad_hdg, "°", 0),
         ("HDG", "navigation.headingTrue", _rad_hdg, "°", 0),
+        ("STW", "navigation.speedThroughWater", _ms_kn, "kn", 1),
+        ("ROT", "navigation.rateOfTurn", _rads_degs, "°/s", 1),
         ("FIX", "navigation.position", None, "", 0),        # special-cased
     ]),
     ("ENGINE", [
         ("RPM", "propulsion.*.revolutions", _hz_rpm, "rpm", 0),
         ("TEMP", "propulsion.*.temperature", _k_c, "°C", 0),
         ("OIL", "propulsion.*.oilPressure", _pa_bar, "bar", 1),
+        ("COOL", "propulsion.*.coolantTemperature", _k_c, "°C", 0),
+        ("FUEL", "propulsion.*.fuel.rate", _m3s_lph, "L/h", 1),
         ("HOURS", "propulsion.*.runTime", _sec_hr, "h", 0),
     ]),
     ("ENVIRON", [
@@ -63,12 +71,16 @@ PAGES = [
         ("AWS", "environment.wind.speedApparent", _ms_kn, "kn", 1),
         ("AWA", "environment.wind.angleApparent", _rad_rel, "°", 0),
         ("WATER", "environment.water.temperature", _k_c, "°C", 1),
+        ("AIR", "environment.outside.temperature", _k_c, "°C", 1),
+        ("BARO", "environment.outside.pressure", _pa_mbar, "mbar", 0),
     ]),
     ("POWER", [
         ("VOLTS", "electrical.batteries.*.voltage", _id, "V", 1),
         ("SOC", "electrical.batteries.*.stateOfCharge", _ratio_pct, "%", 0),
         ("CURR", "electrical.batteries.*.current", _id, "A", 1),
         ("BTEMP", "electrical.batteries.*.temperature", _k_c, "°C", 0),
+        ("TTG", "electrical.batteries.*.capacity.timeRemaining", _sec_hr, "h", 1),
+        ("SOLAR", "electrical.solar.*.panelPower", _id, "W", 0),
     ]),
 ]
 
@@ -212,9 +224,13 @@ class SignalKScreen(WebAppScreen):
                       fill=th.accent if i == page else th.card_hi)
         top += 24
 
+        # heartbeat stays pinned to the bottom edge; the 3x2 vitals grid
+        # stretches to fill whatever sits between it and the page label
+        hb_y = self.app.h - 36
         gap = 8
+        rows = 3
         cw = (w - 24 - gap) / 2
-        ch = 76
+        ch = (hb_y - 8 - top - (rows - 1) * gap) // rows
         for i, (label, path, conv, unit, dec) in enumerate(metrics):
             r, c = divmod(i, 2)
             x0 = 12 + c * (cw + gap)
@@ -225,13 +241,13 @@ class SignalKScreen(WebAppScreen):
             val, unit2 = self._display(path, conv, unit, dec)
             d.text((x0 + 10, y0 + 25), val,
                    font=T.font(26, bold=True, mono=True), fill=th.fg)
-            d.text((x0 + 10, y0 + 58), unit2, font=T.font(11), fill=th.muted)
-        top += 2 * ch + gap + 8
+            d.text((x0 + 10, y0 + ch - 18), unit2, font=T.font(11),
+                   fill=th.muted)
 
-        self._draw_heartbeat(d, th, top, w)
+        self._draw_heartbeat(d, th, hb_y, w)
         # row bands for the partial-blit path (full width, small padding)
-        self._hb_box = (0, top - 2, w, top + 28)
-        self._panel_box = (0, panel_top, w, top + 28)
+        self._hb_box = (0, hb_y - 2, w, hb_y + 28)
+        self._panel_box = (0, panel_top, w, hb_y + 28)
 
     def _draw_heartbeat(self, d, th, y, w):
         ages, srcs = [], set()

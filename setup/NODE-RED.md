@@ -1,13 +1,13 @@
 # Wiring the Scottina Node-RED panel
 
 The Scottina **Node-RED** screen is a thin front panel for a flow running on the
-Pi. It shows **4 feedback fields** and **4 trigger buttons**. It talks to your
+Pi. It shows **6 feedback fields** and **6 trigger buttons**. It talks to your
 flow over two HTTP endpoints on `127.0.0.1:1880`:
 
 | Direction | Endpoint | What it does |
 |---|---|---|
-| Scottina → reads | `GET /kilodash/state` | your flow returns the 4 field labels+values and 4 button labels |
-| Scottina → writes | `POST /kilodash/btn/1..4` | fired when you tap a panel button |
+| Scottina → reads | `GET /kilodash/state` | your flow returns up to 6 field labels+values and 6 button labels |
+| Scottina → writes | `POST /kilodash/btn/1..6` | fired when you tap a panel button |
 
 Scottina polls `/kilodash/state` about every 2 seconds and redraws.
 
@@ -29,9 +29,12 @@ function answers `/kilodash/state` by reading **flow context**:
 ```
 Field 1  ← flow.f1      label ← flow.f1_label  (defaults to "Field 1")
 Field 2  ← flow.f2      label ← flow.f2_label
-Field 3  ← flow.f3      label ← flow.f3_label
-Field 4  ← flow.f4      label ← flow.f4_label
+  …
+Field 6  ← flow.f6      label ← flow.f6_label
 ```
+
+(Flows imported before the 6-field panel only publish f1–f4 — that's fine,
+fields 5–6 just show `—` until you write their context keys.)
 
 So **to fill a field, write your value into that context key** from anywhere in
 your flows. The panel picks it up on the next poll. Unset keys show `—`.
@@ -74,8 +77,8 @@ return null;   // nothing needs to reach the panel; it polls context
 
 ## Wiring the buttons
 
-Tapping a panel button sends `POST /kilodash/btn/N` (N = 1–4). The imported
-**handle trigger** function receives it with `msg.req.params.n` = `"1"`…`"4"`.
+Tapping a panel button sends `POST /kilodash/btn/N` (N = 1–6). The imported
+**handle trigger** function receives it with `msg.req.params.n` = `"1"`…`"6"`.
 Branch on it:
 
 ```js
@@ -98,7 +101,7 @@ curl -s http://127.0.0.1:1880/kilodash/state | python3 -m json.tool
 curl -s -X POST http://127.0.0.1:1880/kilodash/btn/1
 ```
 
-The first should print your 4 fields + 4 button labels; the second triggers
+The first should print your 6 fields + 6 button labels; the second triggers
 button 1 (watch the Node-RED debug sidebar for the `node.warn`).
 
 ## Reference: the JSON contract
@@ -107,9 +110,9 @@ button 1 (watch the Node-RED debug sidebar for the `node.warn`).
 
 ```json
 {
-  "fields":  [ {"label": "Temp", "value": "21.4"}, ... 4 total ],
-  "buttons": [ {"label": "Fan"}, ... 4 total ]
+  "fields":  [ {"label": "Temp", "value": "21.4"}, ... up to 6 ],
+  "buttons": [ {"label": "Fan"}, ... up to 6 ]
 }
 ```
 
-Fewer than 4 entries is fine — Scottina pads the rest with defaults.
+Fewer entries is fine — Scottina pads the rest with defaults.

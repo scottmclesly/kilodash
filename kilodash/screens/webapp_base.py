@@ -5,9 +5,11 @@ serves its own browser UI (Kismet, Node-RED, AIS-catcher…). It gives you the
 three things every such app needs, for free:
 
   1. **Auto-launch on open** — entering the screen starts the app (per spec).
-  2. **Positive confirmation** — a status banner that only turns green once the
-     app's port actually answers, plus the exact URL:port to open elsewhere.
-  3. **A Start/Stop control** and clean hooks for per-app controls + feedback.
+  2. **Positive confirmation** — one compact card whose border only turns green
+     once the app's port actually answers, plus the exact URL:port to open
+     elsewhere.
+  3. **A Start/Stop control** — tap the card (stop asks first) — and clean
+     hooks for per-app controls + feedback.
 
 Subclass and set `app_name`, `port`, and either `service` or `start_cmd`. Then
 override the hooks (`draw_app`, `handle_app_tap`, `poll_app`, `build_start_cmd`)
@@ -17,15 +19,17 @@ for the app-specific panel. Tiles auto-hide until the app is installed.
 import time
 
 from .. import theme as T, webapp
-from ..widgets import Button, rrect
+from ..widgets import rrect
 from .base import Screen, HEADER_H
 
 _STATE_STYLE = {
-    webapp.UP:       ("✓", "ok",     "Running"),
-    webapp.STARTING: ("…", "accent", "Launching…"),
-    webapp.ERROR:    ("!",      "bad",    "Problem"),
-    webapp.STOPPED:  ("○", "muted",  "Stopped"),
+    webapp.UP:       ("ok",     "Running"),
+    webapp.STARTING: ("accent", "Launching…"),
+    webapp.ERROR:    ("bad",    "Problem"),
+    webapp.STOPPED:  ("muted",  "Stopped"),
 }
+
+CARD_H = 58     # the whole shared header is this one card
 
 
 class WebAppScreen(Screen):
@@ -47,6 +51,9 @@ class WebAppScreen(Screen):
         self._btns = {}
         self._avail = None
         self._avail_t = -1e9
+        self._card_box = None
+        self.confirm = False       # stop-app confirm dialog up?
+        self._ok_box = self._cancel_box = None
 
     # ---- tile gating: only offer the app once it's installed ----
     def available(self):
@@ -75,59 +82,84 @@ class WebAppScreen(Screen):
 
     # ---- rendering ----
     def app_top(self):
-        """Y where the app-specific panel begins (below banner/URL/controls)."""
-        return HEADER_H + 8 + 66 + 8 + 56 + 8 + 42 + 10
+        """Y where the app-specific panel begins (below the status card)."""
+        return HEADER_H + 8 + CARD_H + 10
 
     def draw_content(self, d, th):
         w = self.app.w
         self._btns = {}
         top = HEADER_H + 8
 
-        # --- status banner: green only once the port truly answers ---
-        icon, colkey, head = _STATE_STYLE[self.web.state]
+        # --- the one status card: border colour = app state, green only once
+        #     the port truly answers; body is the URL to open elsewhere.
+        #     Tap = stop (confirmed) / launch. ---
+        colkey, head = _STATE_STYLE[self.web.state]
         col = getattr(th, colkey)
-        bh = 66
-        rrect(d, (12, top, w - 12, top + bh), 12, fill=th.card)
-        cy = top + bh / 2
-        d.ellipse((26, cy - 18, 26 + 36, cy + 18), fill=col)
-        f = T.font(26, bold=True)
-        iw = d.textlength(icon, font=f)
-        d.text((44 - iw / 2, cy - 17), icon, font=f, fill=th.ink)
-        d.text((78, top + 12), f"{self.app_name} · {head}",
-               font=T.font(17, bold=True), fill=th.fg)
-        d.text((78, top + 38), self.web.message[:32], font=T.font(12),
-               fill=th.muted)
-
-        # --- URL / port card ---
-        y = top + bh + 8
-        uh = 56
-        rrect(d, (12, y, w - 12, y + uh), 12, fill=th.card)
-        d.text((22, y + 8), "WEB UI", font=T.font(11, bold=True), fill=th.muted)
+        self._card_box = (12, top, w - 12, top + CARD_H)
+        rrect(d, self._card_box, 12, fill=th.card, outline=col, width=2)
+        d.text((22, top + 8), f"{self.app_name} · {head}",
+               font=T.font(13, bold=True), fill=col)
+        hint = "tap: stop" if self.web.running else "tap: launch"
+        fh = T.font(11)
+        hw = d.textlength(hint, font=fh)
+        d.text((w - 22 - hw, top + 10), hint, font=fh, fill=th.muted)
         if self.web.state in (webapp.UP, webapp.STARTING):
-            d.text((22, y + 24), self.web.url(),
+            d.text((22, top + 29), self.web.url(),
                    font=T.font(15, bold=True, mono=True),
                    fill=th.accent if self.web.state == webapp.UP else th.muted)
+        elif self.web.state == webapp.ERROR:
+            d.text((22, top + 31), self.web.message[:34],
+                   font=T.font(12, mono=True), fill=th.muted)
         else:
-            d.text((22, y + 26), f"port {self.web.port} · not serving",
+            d.text((22, top + 31), f"port {self.web.port} · not serving",
                    font=T.font(13, mono=True), fill=th.muted)
 
-        # --- Start / Stop ---
-        y += uh + 8
-        running = self.web.running
-        b = Button((12, y, w - 12, y + 42),
-                   "Stop app" if running else f"Launch {self.app_name}",
-                   kind="danger" if running else "primary", font_size=17)
-        b.draw(d, th)
-        self._btns["power"] = b
-
         # --- app-specific panel ---
-        self.draw_app(d, th, y + 52)
+        self.draw_app(d, th, self.app_top())
+
+        if self.confirm:
+            self._draw_confirm(d, th)
+
+    def _draw_confirm(self, d, th):
+        w = self.app.w
+        x0, y0, x1, y1 = 26, 170, w - 26, 300
+        rrect(d, (x0 - 3, y0 - 3, x1 + 3, y1 + 3), 14, fill=th.bg)
+        rrect(d, (x0, y0, x1, y1), 12, fill=th.card, outline=th.bad, width=2)
+        f = T.font(20, bold=True)
+        title = f"Stop {self.app_name}?"
+        tw = d.textlength(title, font=f)
+        d.text(((w - tw) / 2, y0 + 18), title, font=f, fill=th.fg)
+        d.text((x0 + 22, y0 + 52), f"Web UI on :{self.web.port} goes down.",
+               font=T.font(14), fill=th.muted)
+        by = y1 - 48
+        mid = w / 2
+        self._cancel_box = (x0 + 14, by, mid - 6, by + 36)
+        self._ok_box = (mid + 6, by, x1 - 14, by + 36)
+        rrect(d, self._cancel_box, 10, fill=th.card_hi)
+        rrect(d, self._ok_box, 10, fill=th.bad)
+        fb = T.font(16, bold=True)
+        for box, label, colr in ((self._cancel_box, "Cancel", th.fg),
+                                 (self._ok_box, "Stop", th.bg)):
+            bx0, by0, bx1, _ = box
+            lw = d.textlength(label, font=fb)
+            d.text(((bx0 + bx1 - lw) / 2, by0 + 9), label, font=fb, fill=colr)
+
+    @staticmethod
+    def _in(box, x, y):
+        if not box:
+            return False
+        x0, y0, x1, y1 = box
+        return x0 <= x <= x1 and y0 <= y <= y1
 
     def handle_tap(self, x, y):
-        b = self._btns.get("power")
-        if b and b.hit(x, y):
-            if self.web.running:
+        if self.confirm:
+            if self._in(self._ok_box, x, y):
                 self.web.stop()
+            self.confirm = False       # any other tap dismisses
+            return True
+        if self._in(self._card_box, x, y):
+            if self.web.running:
+                self.confirm = True
             else:
                 self.web.launch(self.build_start_cmd())
             return True
