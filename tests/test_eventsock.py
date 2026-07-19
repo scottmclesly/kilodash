@@ -486,5 +486,97 @@ class HomeModelInvariants(unittest.TestCase):
                 self.assertTrue(t.get("id"))
 
 
+class GenericModelInvariants(unittest.TestCase):
+    """Rules the generic fallback has to hold for every screen."""
+
+    def test_note_only_appears_on_a_genuinely_empty_screen(self):
+        """The note explains a panel with NOTHING on it. On a screen with real
+        rows and working controls it reads as breakage rather than honesty —
+        which is exactly how it was reported from the field."""
+        from kilodash.screens.base import Screen
+
+        class Empty(Screen):
+            tile_id = "empty"
+
+        class Full(Screen):
+            tile_id = "full"
+
+            def model_rows(self):
+                return [{"label": "A", "value": "1", "state": None}]
+
+        class ButtonsOnly(Screen):
+            tile_id = "btn"
+
+            def model_buttons(self):
+                return [{"id": "go", "label": "GO", "enabled": True,
+                         "confirm": False}]
+
+        # __new__: Screen.__init__ wants an app, and none of this needs one.
+        self.assertIn("note", Screen.model(Empty.__new__(Empty)))
+        self.assertNotIn("note", Screen.model(Full.__new__(Full)),
+                         "a screen with rows must not be labelled unfinished")
+        self.assertNotIn("note", Screen.model(ButtonsOnly.__new__(ButtonsOnly)),
+                         "a screen with controls must not be labelled "
+                         "unfinished")
+
+
+class LanModelUsesLiveJobState(unittest.TestCase):
+    """LanScreen.status is a STATIC hint set once in __init__ ("Set a target
+    and tap Run"). The live status lives on the job. Reading the screen field
+    made the mirror show a stale prompt for the entire duration of a scan
+    while the panel showed real progress."""
+
+    def _screen(self, job):
+        from kilodash.screens.lan import LanScreen
+        s = LanScreen.__new__(LanScreen)
+        s.mode, s.target, s.ports = "Discover", "10.0.0.0/24", ""
+        s.status = "Set a target and tap Run"      # the static hint
+        s.selected_ip = None
+        s.job = job
+        return s
+
+    def test_status_row_tracks_the_job_not_the_static_hint(self):
+        class Job:
+            done = False
+            status = "Scanning…"
+            host_count = 3
+            error = None
+
+            def hosts_snapshot(self):
+                return []
+
+        rows = {r["label"]: r["value"] for r in self._screen(Job()).model_rows()}
+        self.assertEqual(rows["STATUS"], "Scanning…")
+        self.assertNotIn("Set a target", " ".join(str(v) for v in rows.values()),
+                         "the static hint must not be shown as scan status")
+        self.assertEqual(rows["SCAN"], "RUNNING")
+
+    def test_discovered_hosts_are_emitted_not_just_counted(self):
+        """The hosts are the point of this screen; a count alone is not a
+        mirror of it."""
+        class Job:
+            done = True
+            status = "Complete · 2 host(s)"
+            host_count = 2
+            error = None
+
+            def hosts_snapshot(self):
+                return [{"ip": "10.0.0.5", "host": "nas", "up": True,
+                         "mac": "AA:BB", "ports": [22, 80]},
+                        {"ip": "10.0.0.9", "host": "", "up": True,
+                         "mac": "", "ports": []}]
+
+        rows = self._screen(Job()).model_rows()
+        labels = [r["label"] for r in rows]
+        self.assertIn("10.0.0.5", labels)
+        self.assertIn("10.0.0.9", labels)
+        row = next(r for r in rows if r["label"] == "10.0.0.5")
+        self.assertIn("nas", row["value"])
+
+    def test_no_job_yet_is_reported_as_idle(self):
+        rows = {r["label"]: r["value"] for r in self._screen(None).model_rows()}
+        self.assertEqual(rows["SCAN"], "IDLE")
+
+
 if __name__ == "__main__":
     unittest.main()

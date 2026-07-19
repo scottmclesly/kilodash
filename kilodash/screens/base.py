@@ -157,14 +157,23 @@ class Screen:
         MUST be cheap and side-effect free: it reads already-computed screen
         state, it never scans a bus or hits the network. Called on the render
         thread, only when the screen has already reported a change."""
-        return {
+        rows = self.model_rows()
+        buttons = self.model_buttons()
+        model = {
             "kind": "generic",
             "title": self.title,
-            "rows": self.model_rows(),
-            "buttons": self.model_buttons(),
-            "note": "Rendered from the generic model — this screen has no "
-                    "rich model yet.",
+            "rows": rows,
+            "buttons": buttons,
         }
+        if not rows and not buttons:
+            # The note exists to explain a screen with NOTHING on it, so an
+            # empty panel does not read as a failure. A screen showing real
+            # rows and working controls is not "unfinished" in any sense the
+            # operator cares about, and the note there reads as breakage
+            # rather than honesty — which is how it was reported.
+            model["note"] = ("Rendered from the generic model — this screen "
+                             "has no rich model yet.")
+        return model
 
     def model_rows(self):
         """Label/value rows for the generic model. Override to give the web

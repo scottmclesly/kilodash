@@ -121,27 +121,56 @@ class LanScreen(Screen):
     # ---- rendering ----
 
     def model_rows(self):
-        """Scan configuration and job state. Reads `self.job` attributes only —
-        never hosts_snapshot() (takes a lock and copies) and never
-        _discover_hosts, which is populated inside draw_content and is stale
-        or empty whenever the screen is not drawing."""
+        """Scan configuration, LIVE job status, and the discovered hosts.
+
+        `self.status` is a STATIC screen hint ("Set a target and tap Run") set
+        once in __init__ — it is not the scan's status and never changes while
+        a scan runs. The panel draws `job.status`, and so does this. Reading
+        the wrong one made the mirror show a stale prompt for the entire
+        duration of a scan.
+
+        The hosts themselves are the point of this screen, so they are
+        emitted, not just counted. hosts_snapshot() takes a lock and copies,
+        but it is a list of small dicts and emission is coalesced at 10 Hz —
+        `_discover_hosts` is NOT used, because it is populated inside
+        draw_content and is empty or stale whenever the screen is not
+        drawing."""
         j = self.job
         rows = [
             {"label": "MODE", "value": str(self.mode).upper(), "state": None},
             {"label": "TARGET", "value": str(self.target or "—"), "state": None},
             {"label": "PORTS", "value": str(self.ports or "COMMON"),
              "state": None},
-            {"label": "STATUS", "value": str(self.status or "—"), "state": None},
         ]
-        if j is not None:
-            rows.append({"label": "SCAN",
-                         "value": "DONE" if j.done else "RUNNING",
-                         "state": "ok" if j.done else "caution"})
-            rows.append({"label": "HOSTS", "value": str(j.host_count),
+        if j is None:
+            rows.append({"label": "SCAN", "value": "IDLE", "state": None})
+            rows.append({"label": "HINT", "value": str(self.status or "—"),
                          "state": None})
-            if getattr(j, "error", None):
-                rows.append({"label": "ERROR", "value": str(j.error),
-                             "state": "fault"})
+            return rows
+
+        rows.append({"label": "SCAN", "value": "DONE" if j.done else "RUNNING",
+                     "state": "ok" if j.done else "caution"})
+        rows.append({"label": "STATUS", "value": str(j.status or "—"),
+                     "state": None})
+        rows.append({"label": "HOSTS", "value": str(j.host_count),
+                     "state": None})
+        if getattr(j, "error", None):
+            rows.append({"label": "ERROR", "value": str(j.error),
+                         "state": "fault"})
+
+        for h in j.hosts_snapshot()[:32]:
+            ip = str(h.get("ip") or "?")
+            name = str(h.get("host") or "")
+            ports = h.get("ports") or []
+            bits = []
+            if name:
+                bits.append(name)
+            if h.get("mac"):
+                bits.append(str(h["mac"]))
+            if ports:
+                bits.append(" ".join(str(p) for p in ports[:6]))
+            rows.append({"label": ip, "value": " · ".join(bits) or "UP",
+                         "state": "ok" if h.get("up") else None})
         if self.selected_ip:
             rows.append({"label": "SELECTED", "value": str(self.selected_ip),
                          "state": None})
