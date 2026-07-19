@@ -1,6 +1,10 @@
-"""Settings: every adjustable variable as a card. Booleans toggle, integers
-step, choices cycle. Also power actions (restart UI / reboot / shutdown) and a
-touch calibration helper.
+"""Settings: every adjustable variable as a tile, laid out two per row.
+Booleans toggle, integers step, choices cycle. Also power actions (restart
+UI / reboot / shutdown) and a touch calibration helper.
+
+The tile column deliberately stops short of the right edge: the app-level
+▲▼ scroll buttons live in a reserved gutter there, so no control can ever
+sit under the scroller and steal (or lose) a tap.
 """
 
 import subprocess
@@ -12,8 +16,11 @@ from .. import theme as T
 from ..widgets import rrect
 from .base import Screen, HEADER_H
 
-ROW_H = 58
-ABOUT_H = 118
+MARGIN = 8        # left edge of the tile column
+GUTTER_W = 64     # right-edge strip reserved for the app's ▲▼ scroller
+GAP = 6           # spacing between tiles
+TILE_H = 84       # label (≤2 lines) on top, control zone at the bottom
+HEAD_H = 26       # group header band
 
 # Order the setting groups top-to-bottom. Anything not listed falls after these
 # (but before the Power actions). Touch sits last — it's rarely changed.
@@ -52,14 +59,10 @@ class SettingsScreen(Screen):
     def _power(self, cmd):
         subprocess.Popen(cmd)
 
-    def draw_content(self, d, th):
-        w, h = self.app.w, self.app.h
-        top = HEADER_H
+    def _sections(self):
+        """(title, caption, [tile...]) — tile = (kind, a, b)."""
         cfg = self.app.config
-        self._hits = []
-
-        # build a tall surface; collect hitboxes in surface space then offset
-        rows = []
+        sections = []
         groups = sorted(cfg.groups().items(),
                         key=lambda kv: (GROUP_ORDER.index(kv[0])
                                         if kv[0] in GROUP_ORDER else len(GROUP_ORDER)))
@@ -67,92 +70,81 @@ class SettingsScreen(Screen):
             visible = [(k, s) for k, s in items if s.get("type") != "hidden"]
             if not visible:
                 continue
-            rows.append(("header", group, None))
-            for key, spec in visible:
-                rows.append(("setting", key, spec))
+            tiles = [("setting", k, s) for k, s in visible]
+            caption = None
             if group == "Touch":
-                rows.append(("action", "Calibrate touch",
-                             lambda: self.app.open_calibration()))
-        rows.append(("header", "Power", None))
-        rows.append(("action", "Restart UI",
-                     lambda: self._power(["sudo", "systemctl", "restart", "kilodash"])))
-        rows.append(("action", "Reboot Pi", lambda: self._power(["sudo", "reboot"])))
-        rows.append(("action", "Shutdown", lambda: self._power(["sudo", "poweroff"])))
-        rows.append(("header", "About", None))
-        rows.append(("about", None, None))
+                tiles.append(("action", "Calibrate",
+                              lambda: self.app.open_calibration()))
+                caption = "Taps landing wrong? Flip these or run Calibrate."
+            sections.append((group, caption, tiles))
+        sections.append(("Power", None, [
+            ("action", "Restart UI",
+             lambda: self._power(["sudo", "systemctl", "restart", "kilodash"])),
+            ("action", "Reboot Pi", lambda: self._power(["sudo", "reboot"])),
+            ("action", "Shutdown", lambda: self._power(["sudo", "poweroff"])),
+        ]))
+        return sections
 
-        # measure height
-        surf_h = 0
-        for kind, *_ in rows:
-            surf_h += (28 if kind == "header"
-                       else ABOUT_H if kind == "about" else ROW_H)
-        surf_h = max(surf_h + 10, h - top)
+    def draw_content(self, d, th):
+        w, h = self.app.w, self.app.h
+        top = HEADER_H
+        self._hits = []
+
+        col_w = w - GUTTER_W                      # tiles never enter the gutter
+        tile_w = (col_w - MARGIN - GAP) // 2
+        xs = (MARGIN, MARGIN + tile_w + GAP)
+        sections = self._sections()
+
+        # measure (tile height is fixed; about card wraps, so pre-wrap it)
+        meas = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+        body = self._wrap(meas, "Created by Scott McLeslie for the benefit "
+                          "of all living beings.", T.font(13), col_w - MARGIN - 24)
+        lic = self._wrap(meas, "MIT License · Feel free to share and "
+                         "contribute · 2026", T.font(11), col_w - MARGIN - 24)
+        about_h = 12 + 26 + len(body) * 17 + 6 + len(lic) * 14 + 12
+
+        surf_h = 4
+        for _, caption, tiles in sections:
+            surf_h += HEAD_H + (16 if caption else 0)
+            surf_h += ((len(tiles) + 1) // 2) * (TILE_H + GAP)
+        surf_h += HEAD_H + about_h
+        surf_h = max(surf_h + 8, h - top)
         self.content_h = surf_h
 
         surf = Image.new("RGB", (w, surf_h), th.bg)
         sd = ImageDraw.Draw(surf)
-        y = 4
         hits_surf = []           # (x0,y0,x1,y1,cb) in surface space
-        for kind, a, b in rows:
-            if kind == "header":
-                sd.text((16, y + 6), a.upper(), font=T.font(13, bold=True),
+        y = 4
+        for title, caption, tiles in sections:
+            sd.text((MARGIN + 6, y + 6), title.upper(),
+                    font=T.font(13, bold=True), fill=th.muted)
+            y += HEAD_H
+            if caption:
+                sd.text((MARGIN + 6, y - 4), caption, font=T.font(11),
                         fill=th.muted)
-                y += 28
-                continue
-            if kind == "about":
-                rrect(sd, (14, y, w - 14, y + ABOUT_H - 6), 10, fill=th.card)
-                sd.text((26, y + 12), f"Scottina v{__version__}",
-                        font=T.font(19, bold=True), fill=th.accent)
-                sd.text((26, y + 42),
-                        "Created by Scott McLeslie for the benefit",
-                        font=T.font(14), fill=th.fg)
-                sd.text((26, y + 62), "of all living beings.",
-                        font=T.font(14), fill=th.fg)
-                sd.text((26, y + 88),
-                        "MIT License · Feel free to share and contribute · 2026",
-                        font=T.font(12), fill=th.muted)
-                y += ABOUT_H
-                continue
-            if kind == "action":
-                rrect(sd, (14, y, w - 14, y + ROW_H - 6), 10, fill=th.card)
-                col = th.bad if a in ("Reboot Pi", "Shutdown") else th.accent
-                sd.text((26, y + 16), a, font=T.font(19, bold=True), fill=col)
-                hits_surf.append((14, y, w - 14, y + ROW_H - 6, b))
-                y += ROW_H
-                continue
-            # setting row
-            key, spec = a, b
-            rrect(sd, (14, y, w - 14, y + ROW_H - 6), 10, fill=th.card)
-            sd.text((26, y + 8), spec["label"], font=T.font(16, bold=True), fill=th.fg)
-            t = spec["type"]
-            if t == "bool":
-                self._draw_toggle(sd, th, w - 90, y + 14, spec["value"])
-                hits_surf.append((w - 92, y, w - 14, y + ROW_H - 6,
-                                  lambda k=key, s=spec: self._toggle(k, s)))
-            elif t == "choice":
-                val = str(spec["value"])
-                vw = sd.textlength(val, font=T.font(16, bold=True))
-                rrect(sd, (w - 40 - vw, y + 12, w - 20, y + 44), 8, fill=th.card_hi)
-                sd.text((w - 30 - vw, y + 16), val, font=T.font(16, bold=True),
-                        fill=th.accent)
-                hits_surf.append((w - 50 - vw, y, w - 14, y + ROW_H - 6,
-                                  lambda k=key, s=spec: self._cycle_choice(k, s)))
-            elif t == "int":
-                unit = spec.get("unit", "")
-                val = f"{spec['value']}{unit}"
-                # [-]  value  [+]
-                self._stepper_box(sd, th, w - 44, y + 12, "+")
-                self._stepper_box(sd, th, w - 150, y + 12, "-")
-                vw = sd.textlength(val, font=T.font(16, bold=True))
-                sd.text((w - 97 - vw / 2, y + 16), val, font=T.font(16, bold=True),
-                        fill=th.fg)
-                hits_surf.append((w - 150, y, w - 116, y + ROW_H - 6,
-                                  lambda k=key, s=spec: self._step(k, s, -1)))
-                hits_surf.append((w - 44, y, w - 10, y + ROW_H - 6,
-                                  lambda k=key, s=spec: self._step(k, s, +1)))
-            sd.text((26, y + 32),
-                    self._hint(key), font=T.font(12), fill=th.muted)
-            y += ROW_H
+                y += 16
+            for i, tile in enumerate(tiles):
+                self._draw_tile(sd, th, xs[i % 2], y, tile_w, tile, hits_surf)
+                if i % 2 == 1:
+                    y += TILE_H + GAP
+            if len(tiles) % 2:
+                y += TILE_H + GAP
+
+        # About card (spans the tile column, also clear of the scroller)
+        sd.text((MARGIN + 6, y + 6), "ABOUT", font=T.font(13, bold=True),
+                fill=th.muted)
+        y += HEAD_H
+        rrect(sd, (MARGIN, y, col_w, y + about_h - 6), 10, fill=th.card)
+        sd.text((MARGIN + 12, y + 12), f"Scottina v{__version__}",
+                font=T.font(18, bold=True), fill=th.accent)
+        ty = y + 12 + 26
+        for ln in body:
+            sd.text((MARGIN + 12, ty), ln, font=T.font(13), fill=th.fg)
+            ty += 17
+        ty += 6
+        for ln in lic:
+            sd.text((MARGIN + 12, ty), ln, font=T.font(11), fill=th.muted)
+            ty += 14
 
         self.paste_list(top, h - top, surf)
 
@@ -161,14 +153,61 @@ class SettingsScreen(Screen):
             self._hits.append((x0, top + y0 - self.scroll,
                                x1, top + y1 - self.scroll, cb))
 
-    def _hint(self, key):
-        return {
-            "touch_swap_xy": "flip if taps land on wrong axis",
-            "touch_invert_x": "flip if taps mirror left/right",
-            "touch_invert_y": "flip if taps mirror up/down",
-            "flip_180": "rotate whole UI (no reboot)",
-            "dim_timeout_sec": "idle time before screensaver",
-        }.get(key, "")
+    def _draw_tile(self, sd, th, x, y, tw, tile, hits):
+        kind, a, b = tile
+        rrect(sd, (x, y, x + tw, y + TILE_H), 10, fill=th.card)
+        if kind == "action":
+            col = th.bad if a in ("Reboot Pi", "Shutdown") else th.accent
+            f = T.font(16, bold=True)
+            lw = sd.textlength(a, font=f)
+            sd.text((x + (tw - lw) / 2, y + TILE_H / 2 - 10), a, font=f,
+                    fill=col)
+            hits.append((x, y, x + tw, y + TILE_H, b))
+            return
+        key, spec = a, b
+        lf = T.font(13, bold=True)
+        for i, ln in enumerate(self._wrap(sd, spec["label"], lf, tw - 16)[:2]):
+            sd.text((x + 8, y + 7 + i * 15), ln, font=lf, fill=th.fg)
+        cy = y + TILE_H - 38                      # control zone top
+        t = spec["type"]
+        if t == "bool":
+            self._draw_toggle(sd, th, x + (tw - 64) // 2, cy + 2, spec["value"])
+            hits.append((x, y, x + tw, y + TILE_H,
+                         lambda k=key, s=spec: self._toggle(k, s)))
+        elif t == "choice":
+            val = str(spec["value"])
+            f = T.font(14, bold=True)
+            vw = sd.textlength(val, font=f)
+            bx0 = x + (tw - vw - 20) / 2
+            rrect(sd, (bx0, cy, bx0 + vw + 20, cy + 30), 8, fill=th.card_hi)
+            sd.text((bx0 + 10, cy + 6), val, font=f, fill=th.accent)
+            hits.append((x, y, x + tw, y + TILE_H,
+                         lambda k=key, s=spec: self._cycle_choice(k, s)))
+        elif t == "int":
+            self._stepper_box(sd, th, x + 6, cy, "-")
+            self._stepper_box(sd, th, x + tw - 36, cy, "+")
+            val = f"{spec['value']}{spec.get('unit', '')}"
+            f = T.font(13, bold=True)
+            vw = sd.textlength(val, font=f)
+            sd.text((x + tw / 2 - vw / 2, cy + 8), val, font=f, fill=th.fg)
+            # each half of the tile is one big step target
+            hits.append((x, y, x + tw // 2, y + TILE_H,
+                         lambda k=key, s=spec: self._step(k, s, -1)))
+            hits.append((x + tw // 2, y, x + tw, y + TILE_H,
+                         lambda k=key, s=spec: self._step(k, s, +1)))
+
+    def _wrap(self, sd, text, font, maxw):
+        lines, cur = [], ""
+        for word in text.split():
+            cand = (cur + " " + word).strip()
+            if cur and sd.textlength(cand, font=font) > maxw:
+                lines.append(cur)
+                cur = word
+            else:
+                cur = cand
+        if cur:
+            lines.append(cur)
+        return lines
 
     def _draw_toggle(self, d, th, x, y, on):
         w_, h_ = 64, 30
@@ -179,10 +218,10 @@ class SettingsScreen(Screen):
         d.ellipse((kx, y + 3, kx + 24, y + 27), fill=th.ink if on else th.fg)
 
     def _stepper_box(self, d, th, x, y, sym):
-        rrect(d, (x, y, x + 34, y + 32), 8, fill=th.card_hi)
-        f = T.font(22, bold=True)
+        rrect(d, (x, y, x + 30, y + 30), 8, fill=th.card_hi)
+        f = T.font(20, bold=True)
         tw = d.textlength(sym, font=f)
-        d.text((x + 17 - tw / 2, y + 3), sym, font=f, fill=th.accent)
+        d.text((x + 15 - tw / 2, y + 3), sym, font=f, fill=th.accent)
 
     def handle_tap(self, x, y):
         for x0, y0, x1, y1, cb in self._hits:
