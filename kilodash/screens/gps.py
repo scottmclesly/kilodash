@@ -20,7 +20,7 @@ import math
 import time
 
 from .. import system, theme as T
-from ..widgets import rrect
+from ..widgets import brackets, hazard, seg_row, spaced, state_glyph
 from .base import Screen, HEADER_H
 
 from gps.gpsdio import GpsdListener, MODE_NAMES, STATUS_DGPS
@@ -148,7 +148,9 @@ class GpsScreen(Screen):
                       width=lw + (1 if el == 0 else 0))
         d.line((cx - R, cy, cx + R, cy), fill=th.card_hi, width=1)
         d.line((cx, cy - R, cx, cy + R), fill=th.card_hi, width=1)
-        f = T.font(11, bold=True)
+        d.text((14, SKY_Y), spaced("SKY PLOT"),
+               font=T.font(10, bold=True, mono=True), fill=th.muted)
+        f = T.font(11, bold=True, mono=True)
         for label, az in (("N", 0), ("E", 90), ("S", 180), ("W", 270)):
             lx = cx + (R + 9) * math.sin(math.radians(az))
             ly = cy - (R + 9) * math.cos(math.radians(az))
@@ -158,11 +160,11 @@ class GpsScreen(Screen):
         sky = self._st["sky"] or {}
         sats = sky.get("satellites") or []
         if not sats:
-            msg = "searching…" if self._st["connected"] else \
-                (self._st["error"] or "waiting for gpsd")
-            fm = T.font(13)
-            tw = d.textlength(msg[:34], font=fm)
-            d.text((cx - tw / 2, cy - 8), msg[:34], font=fm, fill=th.muted)
+            msg = "SEARCHING" if self._st["connected"] else \
+                (self._st["error"] or "WAITING FOR GPSD").upper()
+            fm = T.font(13, bold=True, mono=True)
+            tw = d.textlength(msg[:30], font=fm)
+            d.text((cx - tw / 2, cy - 8), msg[:30], font=fm, fill=th.muted)
             return
         fs = T.font(9, mono=True)
         for s in sats:
@@ -191,48 +193,84 @@ class GpsScreen(Screen):
         sats = sky.get("satellites") or []
         used = sum(1 for s in sats if s.get("used"))
         fix = self._fix_name()
-        y = STATUS_Y + 2
-        rrect(d, (10, y, w - 10, h - 8), 10, fill=th.card)
-        x0 = 22
-        # headline: fix state, loud
         fixed = fix != "none"
-        head = {"none": "NO FIX", "2d": "2D FIX", "3d": "3D FIX",
-                "dgps": "DGPS FIX"}[fix]
-        d.text((x0, y + 8), head, font=T.font(20, bold=True),
-               fill=th.ok if fixed else th.warn)
-        sub = f"{used}/{len(sats)} sats"
+        connected = self._st["connected"]
+        fault = bool(self._st["error"]) or not connected
+
+        # --- fix-state banner: hard-edged, per-state glyph. Device fault
+        # (no gpsd / error) is the only red state; NO FIX while connected is
+        # an amber stand-by, acquiring signal.
+        y0 = STATUS_Y + 2
+        by1 = y0 + 34
+        if fault:
+            col, glyph, label = th.bad, "fault", "LINK FAULT"
+        elif fixed:
+            col, glyph = th.ok, "up"
+            label = {"2d": "2D FIX", "3d": "3D FIX", "dgps": "DGPS FIX"}[fix]
+        else:
+            col, glyph, label = th.warn, "standby", "NO FIX"
+        d.rectangle((12, y0, w - 12, by1), fill=th.card, outline=col, width=2)
+        if fault:                          # faults wear the caution end-caps
+            for zx in (52, w - 16 - 46):
+                hazard(d, (zx, y0 + 4, zx + 46, by1 - 4), col)
+        state_glyph(d, glyph, 34, (y0 + by1) // 2, 11, col)
+        fb = T.font(17, bold=True, mono=True)
+        lw = d.textlength(label, font=fb)
+        d.text(((w - lw) / 2, y0 + (34 - 17) / 2 - 2), label, font=fb, fill=col)
+
+        # --- satellites: caps-mono readout + segmented used-in-fix gauge
+        sy = by1 + 10
+        d.text((20, sy), spaced("SATS"),
+               font=T.font(10, bold=True, mono=True), fill=th.muted)
+        d.text((72, sy - 1), f"{used}/{len(sats)}",
+               font=T.font(12, bold=True, mono=True), fill=th.fg)
         hdop = sky.get("hdop")
         if hdop is not None:
-            sub += f" · HDOP {hdop:.1f}"
-        f14 = T.font(13, bold=True)
-        d.text((w - 22 - d.textlength(sub, font=f14), y + 13), sub,
-               font=f14, fill=th.fg)
-        fm = T.font(13, mono=True)
-        rows = []
+            ht = f"HDOP {hdop:.1f}"
+            d.text((132, sy), ht, font=T.font(10, bold=True, mono=True),
+                   fill=th.muted)
+        SEGS = 12
+        seg_row(d, w - 20 - SEGS * 10 + 2, sy - 2, min(SEGS, used), SEGS,
+                col if fixed else th.muted, th.card_hi)
+
+        # --- position: the bracket-framed primary instrument
+        fx0, fy0, fx1, fy1 = 12, sy + 22, w - 12, h - 28
+        brackets(d, (fx0, fy0, fx1, fy1), th.muted)
+        d.text((fx0 + 10, fy0 + 8), spaced("POSITION"),
+               font=T.font(10, bold=True, mono=True), fill=th.muted)
+        fv = T.font(17, bold=True, mono=True)
+        fs = T.font(12, mono=True)
+        utc = (tpv.get("time") or "")[:19].replace("T", " ")
+        if utc:
+            uw = d.textlength(utc, font=T.font(10, bold=True, mono=True))
+            d.text((fx1 - 10 - uw, fy0 + 8), utc,
+                   font=T.font(10, bold=True, mono=True), fill=th.muted)
         if fixed and tpv.get("lat") is not None:
-            rows.append(f"{tpv['lat']:+11.6f}°  {tpv['lon']:+11.6f}°")
+            d.text((fx0 + 10, fy0 + 26), f"LAT {tpv['lat']:+11.6f}°",
+                   font=fv, fill=th.fg)
+            d.text((fx0 + 10, fy0 + 48), f"LON {tpv['lon']:+11.6f}°",
+                   font=fv, fill=th.fg)
             sog = tpv.get("speed")
             cog = tpv.get("track")
             alt = tpv.get("altMSL", tpv.get("alt"))
             line = ""
             if sog is not None:
-                line += f"SOG {sog * MPS_TO_KN:4.1f} kn  "
+                line += f"SOG {sog * MPS_TO_KN:4.1f}KN  "
             if cog is not None:
-                line += f"COG {cog:05.1f}°"
-            if line:
-                rows.append(line)
+                line += f"COG {cog:05.1f}°  "
             if alt is not None and fix in ("3d", "dgps"):
-                rows.append(f"alt {alt:+.0f} m")
+                line += f"ALT {alt:+.0f}M"
+            if line:
+                d.text((fx0 + 10, fy0 + 72), line[:38], font=fs, fill=th.muted)
         else:
-            reason = self._st["error"] or \
-                ("acquiring — needs sky view" if self._st["connected"]
-                 else "gpsd unreachable")
-            rows.append(reason[:38])
-        utc = (tpv.get("time") or "")[:19].replace("T", " ")
-        if utc:
-            rows.append(f"UTC {utc}")
-        for i, line in enumerate(rows):
-            d.text((x0, y + 40 + i * 20), line[:38], font=fm, fill=th.fg)
+            reason = (self._st["error"] or
+                      ("ACQUIRING — NEEDS SKY VIEW" if connected
+                       else "GPSD UNREACHABLE")).upper()
+            d.text((fx0 + 10, fy0 + 42), reason[:34],
+                   font=T.font(14, bold=True, mono=True),
+                   fill=th.bad if fault else th.warn)
+
         # the time-authority answer, always the bottom line
-        d.text((x0, h - 28), self.chrony_line[:40], font=T.font(12),
+        d.text((20, h - 22), self.chrony_line[:40].upper(),
+               font=T.font(11, bold=True, mono=True),
                fill=th.accent if "GPS" in self.chrony_line else th.muted)

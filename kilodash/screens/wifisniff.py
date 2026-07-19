@@ -20,7 +20,7 @@ import time
 from PIL import Image, ImageDraw
 
 from .. import theme as T
-from ..widgets import Button, rrect
+from ..widgets import Button, spaced, state_glyph, status_square
 from .base import Screen, HEADER_H
 
 CSV_PREFIX = "/opt/kilodash/captures/.wifi_sniff"
@@ -210,31 +210,57 @@ class WifiSniffScreen(Screen):
         sd = ImageDraw.Draw(surf)
         for i, (kind, r) in enumerate(rows):
             y = i * ROW_H
-            rrect(sd, (12, y, w - 12, y + ROW_H - 6), 9, fill=th.card)
+            sd.rectangle((12, y, w - 12, y + ROW_H - 6), fill=th.card,
+                         outline=th.card_hi, width=1)
             pwr = r["pwr"]
             pcol = th.ok if pwr > -60 else th.warn if pwr > -75 else th.muted
-            sd.text((w - 60, y + 8), f"{pwr}", font=T.font(15, bold=True, mono=True),
-                    fill=pcol)
-            sd.text((w - 60, y + 28), "dBm", font=T.font(10), fill=th.muted)
+            # square signal glyph: lit = strong, hollow = faint (never red)
+            mode = "lit" if pwr > -60 else "hollow"
+            status_square(sd, (20, y + 8, 32, y + 20), mode, pcol)
+            sd.text((w - 62, y + 8), f"{pwr}",
+                    font=T.font(15, bold=True, mono=True), fill=pcol)
+            sd.text((w - 62, y + 28), spaced("DBM"),
+                    font=T.font(9, bold=True, mono=True), fill=th.muted)
             if kind == "ap":
-                sd.text((22, y + 6), r["ssid"][:22], font=T.font(16, bold=True),
+                sd.text((42, y + 6), r["ssid"][:20], font=T.font(15, bold=True),
                         fill=th.fg)
-                sd.text((22, y + 30), f"AP · ch{r['chan']} · {r['enc'].split(' ')[0]}",
-                        font=T.font(12), fill=th.accent)
+                sub = f"AP · CH{r['chan']} · {r['enc'].split(' ')[0].upper()}"
+                sd.text((42, y + 30), sub, font=T.font(11, bold=True, mono=True),
+                        fill=th.accent)
             else:
-                sd.text((22, y + 6), r["mac"], font=T.font(15, mono=True), fill=th.fg)
+                sd.text((42, y + 6), r["mac"], font=T.font(14, mono=True),
+                        fill=th.fg)
                 probe = (r["probe"] or "").strip().strip(",")
-                sub = f"probe: {probe[:20]}" if probe else f"client → {r['bssid'][:17]}"
-                sd.text((22, y + 30), sub, font=T.font(12), fill=th.muted)
+                sub = (f"PROBE {probe[:18]}" if probe
+                       else f"STA → {r['bssid'][:17]}")
+                sd.text((42, y + 30), sub.upper(), font=T.font(11, mono=True),
+                        fill=th.muted)
         self.paste_list(top, h - top, surf)
 
         d.rectangle((0, HEADER_H, w, top), fill=th.bg)
         bar_y = HEADER_H + 4
-        rrect(d, (12, bar_y, w - 130, bar_y + 38), 8, fill=th.card)
-        d.text((22, bar_y + 11), self.status[:26], font=T.font(12), fill=th.muted)
+        # capture-state banner: hard-edged, per-state glyph. Stopping a passive
+        # capture is a stand-down (muted), not a fault; only a missing adapter
+        # or missing tool is a fault (red).
+        running = self.running
+        s_low = self.status.lower()
+        fault = not running and ("not found" in s_low or "no second" in s_low)
+        if running:
+            col, glyph = th.ok, "up"
+        elif fault:
+            col, glyph = th.bad, "fault"
+        else:
+            col, glyph = th.muted, "standby"
+        bx1 = w - 130
+        d.rectangle((12, bar_y, bx1, bar_y + 38), fill=th.card, outline=col,
+                    width=2)
+        state_glyph(d, glyph, 30, bar_y + 19, 9, col)
+        d.text((46, bar_y + 12), self.status[:20].upper(),
+               font=T.font(11, bold=True, mono=True), fill=col)
         self.toggle_btn = Button((w - 122, bar_y, w - 12, bar_y + 38),
-                                 "Stop" if self.running else "Start",
-                                 kind="danger" if self.running else "primary",
+                                 "STOP" if running else "START",
+                                 kind="primary",
+                                 color=th.warn if running else None,
                                  font_size=17)
         self.toggle_btn.draw(d, th)
 

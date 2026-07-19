@@ -6,7 +6,7 @@ appear only while their dongle is plugged in (see devices.py). All taps.
 import time
 
 from .. import pictograms, system, theme as T
-from ..widgets import rrect
+from ..widgets import spaced
 from .base import Screen, HEADER_H
 
 IFACE_LABELS = {"wlan0": "WiFi", "eth0": "LAN"}
@@ -39,24 +39,31 @@ class LauncherScreen(Screen):
     def _draw_header(self, d, th):
         w = self.app.w
         d.rectangle((0, 0, w, HEADER_H), fill=th.card)
+        d.rectangle((0, HEADER_H - 2, w, HEADER_H), fill=th.card_hi)
         if self.ips:
             label, ip = self.ips[int(time.time() / ROTATE_SEC) % len(self.ips)]
-            d.text((14, 5), label, font=T.font(12, bold=True), fill=th.muted)
-            d.text((14, 19), ip, font=T.font(20, bold=True, mono=True),
+            d.text((14, 5), spaced(label.upper()),
+                   font=T.font(9, bold=True, mono=True), fill=th.muted)
+            d.text((14, 18), ip, font=T.font(20, bold=True, mono=True),
                    fill=th.accent)
             if len(self.ips) > 1:
+                # square uplink-select pips, lit = the shown interface
                 dotx = w - 60
                 cur = int(time.time() / ROTATE_SEC) % len(self.ips)
                 for i in range(len(self.ips)):
-                    d.ellipse((dotx + i * 10, 6, dotx + i * 10 + 5, 11),
-                              fill=th.accent if i == cur else th.card_hi)
+                    box = (dotx + i * 10, 6, dotx + i * 10 + 5, 11)
+                    if i == cur:
+                        d.rectangle(box, fill=th.accent)
+                    else:
+                        d.rectangle(box, outline=th.card_hi, width=1)
         else:
-            d.text((14, 12), "no network", font=T.font(18, bold=True), fill=th.muted)
+            d.text((14, 14), spaced("NO UPLINK"),
+                   font=T.font(14, bold=True, mono=True), fill=th.muted)
         if self.app.config["show_clock"]:
             clk = time.strftime("%H:%M")
-            f = T.font(18, bold=True)
+            f = T.font(16, bold=True, mono=True)
             tw = d.textlength(clk, font=f)
-            d.text((w - tw - 14, 15), clk, font=f, fill=th.fg)
+            d.text((w - tw - 14, 16), clk, font=f, fill=th.fg)
 
     def _visible(self):
         return [s for s in self.app.screens[1:]
@@ -84,19 +91,21 @@ class LauncherScreen(Screen):
                 color = th.muted
             else:
                 color = getattr(th, getattr(scr, "tile_color_key", "accent"))
-            rrect(d, box, 14, fill=th.card)
+            d.rectangle(box, fill=th.card, outline=th.card_hi, width=1)
             cx = (x0 + x0 + tw) / 2
             cy = y0 + tile_h * 0.34
             # semiotic-standard pictogram, one per subsystem (pictograms.py)
             pictograms.draw(d, getattr(scr, "glyph", None), cx, cy,
                             min(16, tile_h * 0.22), color)
-            # live badge on device tiles
+            # live badge on device tiles: lit square, the row-status idiom
             if scr.device_key is not None:
-                d.ellipse((x0 + tw - 20, y0 + 12, x0 + tw - 12, y0 + 20),
-                          fill=th.ok)
-            lf = T.font(19, bold=True)
-            lw = d.textlength(scr.title, font=lf)
-            d.text((cx - lw / 2, y0 + tile_h * 0.55), scr.title, font=lf, fill=th.fg)
+                d.rectangle((x0 + tw - 20, y0 + 12, x0 + tw - 12, y0 + 20),
+                            fill=th.ok)
+            lf = T.font(14, bold=True, mono=True)
+            label = scr.title.upper()
+            lw = d.textlength(label, font=lf)
+            d.text((cx - lw / 2, y0 + tile_h * 0.58), label, font=lf,
+                   fill=th.fg)
             self.tiles.append((box, scr))
 
     def handle_tap(self, x, y):

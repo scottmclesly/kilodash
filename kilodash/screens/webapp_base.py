@@ -19,14 +19,16 @@ for the app-specific panel. Tiles auto-hide until the app is installed.
 import time
 
 from .. import theme as T, webapp
-from ..widgets import rrect
+from ..widgets import confirm_dialog, hazard, spaced, state_glyph
 from .base import Screen, HEADER_H
 
-_STATE_STYLE = {
-    webapp.UP:       ("ok",     "Running"),
-    webapp.STARTING: ("accent", "Launching…"),
-    webapp.ERROR:    ("bad",    "Problem"),
-    webapp.STOPPED:  ("muted",  "Stopped"),
+# Semiotic-Standard state banner styling (kin to Tables' converter banner):
+# hazard end-caps on FAULT only; stopping is a stand-down, never red.
+_STATES = {
+    webapp.UP:       {"label": "UP",          "col": "ok",     "glyph": "up"},
+    webapp.STARTING: {"label": "SPINNING UP", "col": "accent", "glyph": "spin"},
+    webapp.ERROR:    {"label": "FAULT",       "col": "bad",    "glyph": "fault"},
+    webapp.STOPPED:  {"label": "STANDING BY", "col": "muted",  "glyph": "standby"},
 }
 
 CARD_H = 58     # the whole shared header is this one card
@@ -90,29 +92,39 @@ class WebAppScreen(Screen):
         self._btns = {}
         top = HEADER_H + 8
 
-        # --- the one status card: border colour = app state, green only once
-        #     the port truly answers; body is the URL to open elsewhere.
+        # --- the one state banner: border + glyph = app state, green only
+        #     once the port truly answers; line two is the uplink URL.
         #     Tap = stop (confirmed) / launch. ---
-        colkey, head = _STATE_STYLE[self.web.state]
-        col = getattr(th, colkey)
+        st = _STATES[self.web.state]
+        col = getattr(th, st["col"])
         self._card_box = (12, top, w - 12, top + CARD_H)
-        rrect(d, self._card_box, 12, fill=th.card, outline=col, width=2)
-        d.text((22, top + 8), f"{self.app_name} · {head}",
-               font=T.font(13, bold=True), fill=col)
-        hint = "tap: stop" if self.web.running else "tap: launch"
-        fh = T.font(11)
-        hw = d.textlength(hint, font=fh)
-        d.text((w - 22 - hw, top + 10), hint, font=fh, fill=th.muted)
+        d.rectangle(self._card_box, fill=th.card, outline=col, width=2)
+        fault = self.web.state == webapp.ERROR
+        if fault:                        # faults wear the caution end-caps
+            hazard(d, (w - 12 - 46, top + 4, w - 16, top + CARD_H - 4), col)
+        state_glyph(d, st["glyph"], 34, top + CARD_H // 2, 11, col)
+        f = T.font(15, bold=True, mono=True)
+        lw = d.textlength(st["label"], font=f)
+        d.text(((w - lw) / 2, top + 8), st["label"], font=f, fill=col)
+        if not fault:
+            hint = "TAP: STOP" if self.web.running else "TAP: LAUNCH"
+            fh = T.font(9, bold=True, mono=True)
+            hw = d.textlength(hint, font=fh)
+            d.text((w - 22 - hw, top + 11), hint, font=fh, fill=th.muted)
         if self.web.state in (webapp.UP, webapp.STARTING):
-            d.text((22, top + 29), self.web.url(),
-                   font=T.font(15, bold=True, mono=True),
+            url = self.web.url()
+            fu = T.font(14, bold=True, mono=True)
+            uw = d.textlength(url, font=fu)
+            d.text(((w - uw) / 2, top + 31), url, font=fu,
                    fill=th.accent if self.web.state == webapp.UP else th.muted)
-        elif self.web.state == webapp.ERROR:
-            d.text((22, top + 31), self.web.message[:34],
-                   font=T.font(12, mono=True), fill=th.muted)
+        elif fault:
+            d.text((52, top + 31), self.web.message[:26],
+                   font=T.font(11, mono=True), fill=th.fg)
         else:
-            d.text((22, top + 31), f"port {self.web.port} · not serving",
-                   font=T.font(13, mono=True), fill=th.muted)
+            lab = f"PORT {self.web.port} · " + spaced("NO UPLINK")
+            fu = T.font(11, bold=True, mono=True)
+            uw = d.textlength(lab, font=fu)
+            d.text(((w - uw) / 2, top + 32), lab, font=fu, fill=th.muted)
 
         # --- app-specific panel ---
         self.draw_app(d, th, self.app_top())
@@ -121,28 +133,12 @@ class WebAppScreen(Screen):
             self._draw_confirm(d, th)
 
     def _draw_confirm(self, d, th):
-        w = self.app.w
-        x0, y0, x1, y1 = 26, 170, w - 26, 300
-        rrect(d, (x0 - 3, y0 - 3, x1 + 3, y1 + 3), 14, fill=th.bg)
-        rrect(d, (x0, y0, x1, y1), 12, fill=th.card, outline=th.bad, width=2)
-        f = T.font(20, bold=True)
-        title = f"Stop {self.app_name}?"
-        tw = d.textlength(title, font=f)
-        d.text(((w - tw) / 2, y0 + 18), title, font=f, fill=th.fg)
-        d.text((x0 + 22, y0 + 52), f"Web UI on :{self.web.port} goes down.",
-               font=T.font(14), fill=th.muted)
-        by = y1 - 48
-        mid = w / 2
-        self._cancel_box = (x0 + 14, by, mid - 6, by + 36)
-        self._ok_box = (mid + 6, by, x1 - 14, by + 36)
-        rrect(d, self._cancel_box, 10, fill=th.card_hi)
-        rrect(d, self._ok_box, 10, fill=th.bad)
-        fb = T.font(16, bold=True)
-        for box, label, colr in ((self._cancel_box, "Cancel", th.fg),
-                                 (self._ok_box, "Stop", th.bg)):
-            bx0, by0, bx1, _ = box
-            lw = d.textlength(label, font=fb)
-            d.text(((bx0 + bx1 - lw) / 2, by0 + 9), label, font=fb, fill=colr)
+        # stand-down order: caution amber, not red — red is for faults
+        self._cancel_box, self._ok_box = confirm_dialog(
+            d, th, self.app.w, spaced("STAND DOWN?"),
+            (f"{self.app_name.upper()} WEB UI ON :{self.web.port}",
+             "GOES DARK"),
+            (("RESUME", None), ("STOP", th.warn)))
 
     @staticmethod
     def _in(box, x, y):

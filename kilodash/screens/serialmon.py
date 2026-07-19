@@ -13,7 +13,7 @@ import threading
 from PIL import Image, ImageDraw
 
 from .. import theme as T
-from ..widgets import Button, rrect
+from ..widgets import Button, brackets, spaced
 from .base import Screen, HEADER_H
 
 BAUDS = [115200, 9600, 57600, 38400, 19200, 250000, 460800]
@@ -64,7 +64,7 @@ class SerialScreen(Screen):
         try:
             self._fd = os.open(port, os.O_RDONLY | os.O_NONBLOCK)
         except OSError as e:
-            self.app.toast(f"open failed: {e.errno}")
+            self.app.toast(f"OPEN FAILED · ERRNO {e.errno}")
             return
         self.lines.clear()
         self._buf = ""
@@ -112,38 +112,53 @@ class SerialScreen(Screen):
         y = HEADER_H + 8
         self._btns = {}
 
-        # port + baud selectors on one row
-        rrect(d, (14, y, w - 14, y + 44), 10, fill=th.card)
+        # port + baud selectors on one row (hard-edged; arrows keep their
+        # original tap zones)
+        d.rectangle((14, y, w - 14, y + 44), fill=th.card,
+                    outline=th.card_hi, width=1)
+        d.line((w / 2, y + 6, w / 2, y + 38), fill=th.card_hi, width=1)
         self._btns["port_prev"] = (14, y, 50, y + 44)
         self._btns["port_next"] = (w / 2 - 24, y, w / 2, y + 44)
         d.text((24, y + 9), "‹", font=T.font(26, bold=True), fill=th.accent)
         d.text((w / 2 - 20, y + 9), "›", font=T.font(26, bold=True), fill=th.accent)
+        fl = T.font(8, bold=True, mono=True)
+        fv = T.font(14, bold=True, mono=True)
         port = self._cur_port()
-        pn = os.path.basename(port) if port else "no port"
-        d.text((58, y + 13), pn, font=T.font(15, mono=True), fill=th.fg)
+        pn = os.path.basename(port).upper() if port else "NO PORT"
+        d.text((58, y + 6), spaced("PORT"), font=fl, fill=th.muted)
+        d.text((58, y + 19), pn[:8], font=fv, fill=th.fg if port else th.muted)
         self._btns["baud_prev"] = (w / 2, y, w / 2 + 24, y + 44)
         self._btns["baud_next"] = (w - 50, y, w - 14, y + 44)
         d.text((w / 2 + 4, y + 9), "‹", font=T.font(26, bold=True), fill=th.accent)
         d.text((w - 40, y + 9), "›", font=T.font(26, bold=True), fill=th.accent)
-        d.text((w / 2 + 30, y + 13), str(BAUDS[self.baud_idx]),
-               font=T.font(15, mono=True), fill=th.fg)
+        d.text((w / 2 + 30, y + 6), spaced("BAUD"), font=fl, fill=th.muted)
+        d.text((w / 2 + 30, y + 19), str(BAUDS[self.baud_idx]),
+               font=fv, fill=th.fg)
         y += 52
 
-        # monitor viewport
+        # monitor viewport: bracket-framed instrument; the feed itself
+        # stays raw mono
         mon = (12, y, w - 12, h - 66)
-        rrect(d, mon, 8, fill=th.card)
-        yy = y + 6
+        brackets(d, mon, th.muted)
+        fc = T.font(9, bold=True, mono=True)
+        d.text((22, y + 7), spaced("RX FEED"), font=fc, fill=th.muted)
+        st = spaced("LINK UP") if self.open else spaced("NO LINK")
+        stw = d.textlength(st, font=fc)
+        d.text((w - 22 - stw, y + 7), st, font=fc,
+               fill=th.ok if self.open else th.muted)
+        yy = y + 24
         f = T.font(12, mono=True)
-        for line in list(self.lines)[-((h - 66 - y) // 15):]:
+        for line in list(self.lines)[-((h - 66 - 6 - yy) // 15):]:
             d.text((20, yy), line, font=f, fill=th.fg)
             yy += 15
 
-        # open/close
+        # open/close — closing the link is a stand-down, not a fault: amber
         by = h - 60
         self.open_btn = Button((14, by, w - 14, by + 48),
-                               "Close" if self.open else "Open",
-                               kind="danger" if self.open else "primary",
-                               font_size=20)
+                               "CLOSE" if self.open else "OPEN",
+                               kind="primary",
+                               color=th.warn if self.open else None,
+                               font_size=18)
         self.open_btn.enabled = bool(port)
         self.open_btn.draw(d, th)
         self._btns["open"] = self.open_btn.box if self.open_btn.enabled else None

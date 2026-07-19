@@ -7,10 +7,13 @@ microkvm/ — this screen is the mirror, matching the Tables-tile "remote
 control, not the engine" split. Always visible (software feature, no
 hardware gate); its live meaning comes from arm state.
 
-Layout follows the house style: one compact status card whose border colour
-is the state (LAN/web-app pattern), a 2-per-row label/value field grid
-(Node-RED feedback pattern), and the session log as scrollable cards whose
-frame colour encodes ok/fail (Discover-card pattern).
+Presentation follows the ship-instrument look ratified on the Pomodoro
+refactor (Cobb's Semiotic Standard): a hard-edged gate banner with a
+per-state glyph — ARMED is the plane up (lit core, green), DORMANT an
+amber stand-by (hollow ring + level bar; no hazard caps — those are for
+faults only) — a spaced-caps radio/link readout grid, and hard-edged
+session-log rows keyed by a square status glyph (lit green = executed,
+lit red = failed: an actual fault report).
 """
 
 import time
@@ -18,7 +21,7 @@ import time
 from PIL import Image, ImageDraw
 
 from .. import theme as T
-from ..widgets import rrect
+from ..widgets import spaced, state_glyph, status_square
 from .base import Screen, HEADER_H
 
 LINK_COLORS = {"up": "ok", "connecting": "warn", "down": "bad"}
@@ -32,7 +35,7 @@ FIELDS_Y = STATUS_Y + STATUS_H + 10
 LOG_LABEL_Y = FIELDS_Y + 2 * FIELD_H + FIELD_GAP + 10
 LOG_TOP = LOG_LABEL_Y + 18
 
-# Session-log entry cards.
+# Session-log entry rows.
 CARD_MARGIN = 12
 CARD_H = 62
 CARD_GAP = 8
@@ -80,31 +83,42 @@ class MicroKvmScreen(Screen):
         rt = self.rt
 
         if not rt or not rt.enabled:
-            rrect(d, (12, STATUS_Y, w - 12, STATUS_Y + STATUS_H), 12,
-                  fill=th.card, outline=th.muted, width=2)
-            d.text((22, STATUS_Y + 10), "Command plane disabled",
-                   font=T.font(17, bold=True), fill=th.fg)
-            d.text((22, STATUS_Y + 38), "config.json: microkvm.enabled + home_host",
-                   font=T.font(12, mono=True), fill=th.muted)
+            d.rectangle((12, STATUS_Y, w - 12, STATUS_Y + STATUS_H),
+                        fill=th.card, outline=th.muted, width=2)
+            state_glyph(d, "standby", 34, STATUS_Y + STATUS_H // 2, 12,
+                        th.muted)
+            d.text((54, STATUS_Y + 12), "COMMAND PLANE DISABLED",
+                   font=T.font(12, bold=True, mono=True), fill=th.fg)
+            d.text((54, STATUS_Y + 32), "config.json: microkvm.enabled",
+                   font=T.font(T.SUB, mono=True), fill=th.muted)
+            d.text((54, STATUS_Y + 46), "+ home_host",
+                   font=T.font(T.SUB, mono=True), fill=th.muted)
             return
 
         self._draw_log(d, th, w, rt)
 
-        # fixed bands drawn over the (cleared) upper area, LAN-style
+        # fixed bands drawn over the (cleared) upper area
         d.rectangle((0, HEADER_H, w, LOG_TOP), fill=th.bg)
 
-        # ---- across-the-room banner: ARMED (off-grid) / DORMANT (home).
-        #      One compact card, border colour = state (web-app pattern). ----
+        # ---- across-the-room gate banner: ARMED = the plane up (lit
+        #      core), DORMANT = amber stand-by. Hazard caps are for
+        #      faults only, so the banner never wears them. ----
         armed, reason = rt.gate.state()
-        color = th.warn if armed else th.ok
-        rrect(d, (12, STATUS_Y, w - 12, STATUS_Y + STATUS_H), 12,
-              fill=th.card, outline=color, width=2)
-        d.text((22, STATUS_Y + 6), "ARMED (off-grid)" if armed else "DORMANT (home)",
-               font=T.font(22, bold=True), fill=color)
-        d.text((22, STATUS_Y + 38), reason[:36],
-               font=T.font(12, mono=True), fill=th.muted)
+        col = th.ok if armed else th.warn
+        y0, y1 = STATUS_Y, STATUS_Y + STATUS_H
+        d.rectangle((12, y0, w - 12, y1), fill=th.card, outline=col, width=2)
+        state_glyph(d, "up" if armed else "standby", 34, (y0 + y1) // 2, 12,
+                    col)
+        label = "ARMED · OFF-GRID" if armed else "DORMANT · HOME"
+        f = T.font(17, bold=True, mono=True)
+        lw = d.textlength(label, font=f)
+        d.text((max(54, (w - lw) / 2), y0 + 10), label, font=f, fill=col)
+        sub = reason[:38].upper()
+        fs = T.font(T.SUB, mono=True)
+        sw = d.textlength(sub, font=fs)
+        d.text((max(54, (w - sw) / 2), y0 + 38), sub, font=fs, fill=th.muted)
 
-        # ---- BLE link field grid (2x2, Node-RED feedback pattern) ----
+        # ---- BLE link readout grid (2x2, spaced-caps labels) ----
         lcol = getattr(th, LINK_COLORS.get(rt.link.state, "bad"))
         age = rt.link.rx_age()
         fields = (
@@ -119,23 +133,25 @@ class MicroKvmScreen(Screen):
             r, c = divmod(i, 2)
             x0 = 12 + c * (cw + FIELD_GAP)
             y0 = FIELDS_Y + r * (FIELD_H + FIELD_GAP)
-            rrect(d, (x0, y0, x0 + cw, y0 + FIELD_H), 9, fill=th.card)
-            d.text((x0 + 10, y0 + 6), label, font=T.font(11), fill=th.muted)
+            d.rectangle((x0, y0, x0 + cw, y0 + FIELD_H), fill=th.card,
+                        outline=th.card_hi, width=1)
+            d.text((x0 + 10, y0 + 6), spaced(label),
+                   font=T.font(9, bold=True, mono=True), fill=th.muted)
             d.text((x0 + 10, y0 + 21), value,
                    font=T.font(18, bold=True, mono=True), fill=vcol)
 
-        d.text((14, LOG_LABEL_Y), "SESSION LOG", font=T.font(11, bold=True),
-               fill=th.muted)
+        d.text((14, LOG_LABEL_Y), spaced("SESSION LOG"),
+               font=T.font(10, bold=True, mono=True), fill=th.muted)
 
-    # ---- bounded session log (ring, newest first) as scrollable cards ----
+    # ---- bounded session log (ring, newest first) as scrollable rows ----
     def _draw_log(self, d, th, w, rt):
         view_h = self.app.h - LOG_TOP
         entries = list(rt.executor.log)[::-1]
         if not entries:
             self.content_h = view_h
             d.rectangle((0, LOG_TOP, w, self.app.h), fill=th.bg)
-            d.text((22, LOG_TOP + 10), "no commands received",
-                   font=T.font(13, mono=True), fill=th.muted)
+            d.text((22, LOG_TOP + 10), spaced("NO COMMANDS RECEIVED"),
+                   font=T.font(11, bold=True, mono=True), fill=th.muted)
             return
 
         self.content_h = max(CARD_GAP + len(entries) * (CARD_H + CARD_GAP),
@@ -144,20 +160,22 @@ class MicroKvmScreen(Screen):
         sd = ImageDraw.Draw(surf)
         for i, e in enumerate(entries):
             y0 = CARD_GAP + i * (CARD_H + CARD_GAP)
-            frame = th.ok if e["ok"] else th.bad
-            rrect(sd, (CARD_MARGIN, y0, w - CARD_MARGIN, y0 + CARD_H), 10,
-                  fill=th.card, outline=frame, width=2)
+            col = th.ok if e["ok"] else th.bad     # failed = fault: red earned
+            sd.rectangle((CARD_MARGIN, y0, w - CARD_MARGIN, y0 + CARD_H),
+                         fill=th.card, outline=th.card_hi, width=1)
+            status_square(sd, (CARD_MARGIN + 10, y0 + 8, CARD_MARGIN + 22,
+                               y0 + 20), "lit", col)
             # line 1: sender (accent) left · time (muted) right
-            sd.text((CARD_MARGIN + 12, y0 + 7), e["sender"][:14],
+            sd.text((CARD_MARGIN + 30, y0 + 7), e["sender"][:12].upper(),
                     font=T.font(13, bold=True, mono=True), fill=th.accent)
             hh = time.strftime("%H:%M:%S", time.localtime(e["ts"]))
             hf = T.font(12, mono=True)
             hw = sd.textlength(hh, font=hf)
             sd.text((w - CARD_MARGIN - 12 - hw, y0 + 8), hh, font=hf,
                     fill=th.muted)
-            # line 2: command · line 3: reply in ok/fail colour
-            sd.text((CARD_MARGIN + 12, y0 + 26), e["line"][:34],
+            # line 2: command · line 3: reply in ok/fault colour
+            sd.text((CARD_MARGIN + 30, y0 + 26), e["line"][:32],
                     font=T.font(12, mono=True), fill=th.fg)
-            sd.text((CARD_MARGIN + 12, y0 + 43), e["reply"][:34],
-                    font=T.font(12, mono=True), fill=frame)
+            sd.text((CARD_MARGIN + 30, y0 + 43), e["reply"][:32],
+                    font=T.font(12, mono=True), fill=col)
         self.paste_list(LOG_TOP, view_h, surf)

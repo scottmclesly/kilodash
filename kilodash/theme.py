@@ -38,6 +38,13 @@ PALETTES = {
 
 _font_cache = {}
 
+# Shared type scale for the instrument idiom. SUB is the secondary/sub line
+# under a row's primary readout (e.g. "CH 1 · WPA2" beneath an SSID) — kept
+# one knob so the whole dash stays legible at arm's length on the 320x480
+# panel. HINT is the smaller all-caps legend/footer strip.
+SUB = 11
+HINT = 10
+
 
 def font(size, bold=False, mono=False):
     key = (size, bold, mono)

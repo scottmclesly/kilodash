@@ -33,15 +33,25 @@ While the CanTick WiFi bridge is enabled this screen hosts the supervised
 link too (a CanTick needs a listener whichever tile is up); provisioning,
 heartbeat health and the fallback AP stay on the CAN screen. No tables →
 the tile stays visible and points at the Tables tile.
+
+Presentation follows the ship-instrument look ratified on the Pomodoro and
+Tables refactors (Cobb's Semiotic Standard): a hard-edged state banner with
+a per-state glyph — the GNSS node's state when the node exists, else the
+decode pipeline's; hazard end-caps and red reserved for genuine faults, fix
+loss is an amber stand-by — a bracket-framed decode instrument pane,
+spaced-caps mono readouts, square alert glyphs and a segmented log-fill
+gauge.
 """
 
+import math
 import os
 import time
 
 from PIL import Image, ImageDraw
 
 from .. import busmon, cantick, n2k, system, theme as T
-from ..widgets import Button, Keyboard, rrect
+from ..widgets import (Button, Keyboard, brackets, hazard, seg_row, spaced,
+                       state_glyph, status_square)
 from .base import Screen, HEADER_H
 from .canbus import _can_iface
 
@@ -286,46 +296,82 @@ class N2kScreen(Screen):
             self._draw_detail_head(d, th, w)
         else:
             self._draw_chips(d, th, w)
+        # the one framed instrument: the decode pane (feed / breakdown)
+        brackets(d, (4, LIST_TOP, w - 4, LIST_TOP + self.content_area()[3]),
+                 th.muted, arm=12)
         self._draw_bottom(d, th, w, h)
 
+    def _banner_state(self, th):
+        """Dominant state for the banner: the GNSS node when it exists (the
+        one transmitter on this screen), else the decode pipeline. Amber is
+        stand-by/degraded; red stays reserved for genuine faults."""
+        node = self._node()
+        if node:
+            return {
+                gnss.CLAIMING: ("CLAIMING ADDRESS", th.accent, "spin"),
+                gnss.ACTIVE: ("GNSS SOURCING", th.ok, "up"),
+                gnss.CANNOT_CLAIM: ("GNSS NO ADDRESS", th.bad, "fault"),
+                gnss.STOPPED_FIX: ("GNSS FIX LOST", th.warn, "standby"),
+            }.get(node.state, ("GNSS STANDING BY", th.muted, "standby"))
+        if not self.tables:
+            return ("NO PGN TABLES", th.warn, "standby")
+        if not self.iface:
+            return ("NO BUS", th.muted, "standby")
+        if self.reader and self.reader.error:
+            return ("RX FAULT", th.bad, "fault")
+        return ("DECODING", th.ok, "up")
+
     def _draw_status(self, d, th, w):
-        y = STATUS_Y
-        rrect(d, (14, y, w - 14, y + STATUS_H), 10, fill=th.card)
-        head = (f"{len(self.tables)} PGNs · {self.iface or 'no iface'}"
-                if self.tables else "no enabled tables")
-        d.text((26, y + 5), head[:30], font=T.font(15, bold=True),
-               fill=th.fg if self.tables else th.warn)
-        sub = self.status or ""
-        d.text((26, y + 25), sub[:36], font=T.font(12), fill=th.muted)
+        y0, y1 = STATUS_Y, STATUS_Y + STATUS_H
+        label, col, glyph = self._banner_state(th)
+        sa = self._own_sa()
+        if self._node_state() == gnss.ACTIVE and sa is not None:
+            label += f" @{sa:02X}"
+        d.rectangle((12, y0, w - 12, y1), fill=th.card, outline=col, width=2)
         hits = self._stats["hits"]
+        if glyph == "fault" and not hits:    # faults wear the caution caps
+            hazard(d, (w - 86, y0 + 4, w - 18, y1 - 4), col)
+        state_glyph(d, glyph, 34, (y0 + y1) // 2, 11, col)
+        d.text((52, y0 + 6), label[:20],
+               font=T.font(15, bold=True, mono=True), fill=col)
+        sub = self.status or \
+            f"{len(self.tables)} PGN · {self.iface or 'no iface'}"
+        d.text((52, y0 + 27), sub[:29], font=T.font(T.SUB, mono=True),
+               fill=th.muted)
         if hits:
-            f = T.font(13, bold=True)
-            label = f"⚠ {min(hits, 999)}"
-            bw = d.textlength(label, font=f) + 14
+            f = T.font(12, bold=True, mono=True)
+            n = f"{min(hits, 999)}"
+            bw = d.textlength(n, font=f) + 28
             loud = self._stats["alerting"] > 0
-            rrect(d, (w - 22 - bw, y + 8, w - 22, y + 32), 8,
-                  fill=th.warn if loud else th.card_hi)
-            d.text((w - 22 - bw + 7, y + 12), label, font=f,
+            bx = w - 22 - bw
+            d.rectangle((bx, y0 + 8, w - 22, y0 + 32),
+                        fill=th.warn if loud else th.card_hi)
+            status_square(d, (bx + 8, y0 + 16, bx + 16, y0 + 24), "lit",
+                          th.ink if loud else th.warn)
+            d.text((bx + 21, y0 + 13), n, font=f,
                    fill=th.ink if loud else th.warn)
 
     def _draw_chips(self, d, th, w):
         y = CHIP_Y
-        f = T.font(13, bold=True)
+        f = T.font(12, bold=True, mono=True)
         x = 14
         for key, label, on in (
-                ("pgns", "PGNs", not self.view_unknown),
-                ("unknown", f"Unknown ({len(self._unknown)})",
+                ("pgns", "PGNS", not self.view_unknown),
+                ("unknown", f"UNKNOWN ({len(self._unknown)})",
                  self.view_unknown)):
             cw = d.textlength(label, font=f) + 20
-            rrect(d, (x, y, x + cw, y + CHIP_H - 4), 8,
-                  fill=th.card_hi if on else th.card)
-            d.text((x + 10, y + 5), label, font=f,
+            d.rectangle((x, y, x + cw, y + CHIP_H - 4),
+                        fill=th.card_hi if on else th.card,
+                        outline=th.accent if on else th.card_hi, width=1)
+            d.text((x + 10, y + 6), label, font=f,
                    fill=th.accent if on else th.muted)
             self._btns[f"chip_{key}"] = (x, y, x + cw, y + CHIP_H - 4)
             x += cw + 6
-        if self._stats["fp_dropped"]:
-            d.text((x + 4, y + 7), f"fp-drop {self._stats['fp_dropped']}",
-                   font=T.font(11, mono=True), fill=th.warn)
+        fr = T.font(9, bold=True, mono=True)
+        tail = (f"FP-DROP {self._stats['fp_dropped']}"
+                if self._stats["fp_dropped"] else spaced("DECODE"))
+        d.text((w - 14 - d.textlength(tail, font=fr), y + 9), tail, font=fr,
+               fill=th.warn if self._stats["fp_dropped"] else th.muted)
 
     def _draw_rows(self, d, th, w):
         pane_h = self.content_area()[3]
@@ -335,25 +381,25 @@ class N2kScreen(Screen):
             self.content_h = pane_h
             d.rectangle((0, LIST_TOP, w, LIST_TOP + pane_h), fill=th.bg)
             if not self.tables:
-                msg = "No decode tables enabled." \
-                    if store.list_tables() else "No decode tables installed."
-                d.text((24, LIST_TOP + 14), msg, font=T.font(14, bold=True),
-                       fill=th.warn)
+                msg = spaced("NO TABLES ENABLED") \
+                    if store.list_tables() else spaced("NO TABLES INSTALLED")
+                d.text((24, LIST_TOP + 16), msg,
+                       font=T.font(12, bold=True, mono=True), fill=th.warn)
                 d.text((24, LIST_TOP + 38),
-                       "Home → Tables converts vendor PDFs",
-                       font=T.font(13), fill=th.muted)
+                       "HOME → TABLES CONVERTS VENDOR PDFS",
+                       font=T.font(T.SUB, mono=True), fill=th.muted)
             else:
-                msg = ("waiting for decodable frames…"
+                msg = ("AWAITING DECODABLE FRAMES"
                        if self.reader and self.reader.alive else
                        (self.reader.error if self.reader and self.reader.error
-                        else "no RX socket"))
-                d.text((24, LIST_TOP + 14), msg[:40], font=T.font(13),
-                       fill=th.muted)
+                        else "NO RX SOCKET"))
+                d.text((24, LIST_TOP + 16), msg[:40],
+                       font=T.font(11, mono=True), fill=th.muted)
             return
         self.content_h = max(len(rows) * ROW_H + 4, pane_h)
         surf = Image.new("RGB", (w, self.content_h), th.bg)
         sd = ImageDraw.Draw(surf)
-        fn = T.font(14, bold=True)
+        fn = T.font(13, bold=True, mono=True)
         fs = T.font(11, mono=True)
         own_sa = self._own_sa()
         for i, r in enumerate(rows):
@@ -361,15 +407,15 @@ class N2kScreen(Screen):
             box = (14, y + 1, w - 14, y + ROW_H - 1)
             ours = own_sa is not None and r["src"] == own_sa
             if r["alert"]:
-                rrect(sd, box, 8, fill=th.card_hi, outline=th.warn, width=2)
+                sd.rectangle(box, fill=th.card_hi, outline=th.warn, width=2)
             elif ours:
                 # bus echo of our own sourced PGNs: signal for verifying
                 # our TX, but never mistakable for the boat's GPS
-                rrect(sd, box, 8, fill=th.card, outline=th.accent, width=1)
+                sd.rectangle(box, fill=th.card, outline=th.accent, width=1)
             else:
-                rrect(sd, box, 8, fill=th.card)
+                sd.rectangle(box, fill=th.card)
             name = ("▸" + r["name"]) if ours else r["name"]
-            sd.text((24, y + 4), name[:24], font=fn,
+            sd.text((24, y + 5), name[:24].upper(), font=fn,
                     fill=th.accent if ours else th.fg)
             rate = f"{r['rate']:4.0f}/s"
             sd.text((w - 24 - sd.textlength(rate, font=fs), y + 6), rate,
@@ -387,8 +433,8 @@ class N2kScreen(Screen):
         if not rows:
             self.content_h = pane_h
             d.rectangle((0, LIST_TOP, w, LIST_TOP + pane_h), fill=th.bg)
-            d.text((24, LIST_TOP + 14), "no unknown PGNs heard",
-                   font=T.font(13), fill=th.muted)
+            d.text((24, LIST_TOP + 16), "NO UNKNOWN PGNS HEARD",
+                   font=T.font(11, mono=True), fill=th.muted)
             return
         self.content_h = max(len(rows) * UROW_H + 4, pane_h)
         surf = Image.new("RGB", (w, self.content_h), th.bg)
@@ -397,13 +443,13 @@ class N2kScreen(Screen):
         fs = T.font(11, mono=True)
         for i, u in enumerate(rows):
             y = i * UROW_H
-            rrect(sd, (14, y + 1, w - 14, y + UROW_H - 1), 8, fill=th.card)
+            sd.rectangle((14, y + 1, w - 14, y + UROW_H - 1), fill=th.card)
             sd.text((24, y + 3), f"PGN {u['pgn']}", font=fn, fill=th.warn)
             cnt = f"{u['count']:,}"
             sd.text((w - 24 - sd.textlength(cnt, font=fn), y + 3), cnt,
                     font=fn, fill=th.fg)
             srcs = ",".join(f"{s:02X}" for s in u["srcs"][:6])
-            sd.text((24, y + 19), f"src {srcs} · tap → CAN sniff",
+            sd.text((24, y + 19), f"SRC {srcs} · TAP → CAN SNIFF",
                     font=fs, fill=th.muted)
         self.paste_list(LIST_TOP, pane_h, surf)
 
@@ -418,14 +464,14 @@ class N2kScreen(Screen):
         pgn, src = self.sel
         r = self._sel_row()
         name = r["name"] if r else self.tables.get(pgn, {}).get("name", "?")
-        d.text((16, CHIP_Y - 2), name[:22], font=T.font(16, bold=True),
-               fill=th.accent)
-        sub = f"PGN {pgn} · src {src:02X}" + (f" · {r['rate']:.0f}/s" if r
+        d.text((16, CHIP_Y), name[:25].upper(),
+               font=T.font(13, bold=True, mono=True), fill=th.accent)
+        sub = f"PGN {pgn} · SRC {src:02X}" + (f" · {r['rate']:.0f}/s" if r
                                               else "")
-        d.text((16, CHIP_Y + 18), sub, font=T.font(11, mono=True),
+        d.text((16, CHIP_Y + 18), sub, font=T.font(T.SUB, mono=True),
                fill=th.muted)
-        cb = Button((w - 84, CHIP_Y - 4, w - 14, CHIP_Y + CHIP_H), "Close",
-                    kind="ghost", font_size=14)
+        cb = Button((w - 84, CHIP_Y - 4, w - 14, CHIP_Y + CHIP_H), "CLOSE",
+                    kind="ghost", font_size=13)
         cb.draw(d, th)
         self._btns["close"] = cb.box
 
@@ -454,7 +500,7 @@ class N2kScreen(Screen):
             parts.append(f"ΔSOG {delta['d_sog_mps']:+.1f} m/s")
         if "d_cog_deg" in delta:
             parts.append(f"ΔCOG {delta['d_cog_deg']:+.0f}°")
-        return "vs local GPS: " + "  ".join(parts), n2k.delta_severity(delta)
+        return "VS GPS  " + "  ".join(parts), n2k.delta_severity(delta)
 
     def _draw_fields_pane(self, d, th, w):
         pane_h = self.content_area()[3]
@@ -467,37 +513,38 @@ class N2kScreen(Screen):
         self.content_h = max(n_rows * FROW_H + 4, pane_h)
         surf = Image.new("RGB", (w, self.content_h), th.bg)
         sd = ImageDraw.Draw(surf)
-        fn = T.font(13)
+        fn = T.font(12, mono=True)
         fv = T.font(13, bold=True, mono=True)
-        fs = T.font(10, mono=True)
+        fs = T.font(T.SUB, mono=True)
         pgn = self.sel[0]
         y_off = 0
         if banner:
             text, sev = banner
             color = {"ok": th.ok, "warn": th.warn, "bad": th.bad}[sev]
-            rrect(sd, (14, 1, w - 14, FROW_H - 1), 6,
-                  fill=th.card_hi, outline=color, width=2)
-            sd.text((24, 7), text[:40], font=T.font(12, bold=True),
-                    fill=color)
+            sd.rectangle((14, 1, w - 14, FROW_H - 1),
+                         fill=th.card_hi, outline=color, width=2)
+            sd.text((24, 8), text[:40],
+                    font=T.font(11, bold=True, mono=True), fill=color)
             y_off = FROW_H
         for i, fl in enumerate(fields):
             y = y_off + i * FROW_H
             watch = self.alerts.ranges.get((pgn, fl["name"]))
-            rrect(sd, (14, y + 1, w - 14, y + FROW_H - 1), 6,
-                  fill=th.card_hi if watch else th.card)
-            sd.text((24, y + 6), fl["name"][:20], font=fn, fill=th.fg)
+            sd.rectangle((14, y + 1, w - 14, y + FROW_H - 1),
+                         fill=th.card_hi if watch else th.card)
+            sd.text((24, y + 5), fl["name"][:18].upper(), font=fn, fill=th.fg)
             vw = sd.textlength(fl["disp"][:16], font=fv)
             sd.text((w - 24 - vw, y + 6), fl["disp"][:16], font=fv,
                     fill=th.accent if fl["value"] is not None else th.muted)
             if watch:
                 lo = "" if watch["min"] is None else f"{watch['min']:g}"
                 hi = "" if watch["max"] is None else f"{watch['max']:g}"
-                sd.text((24, y + 19),
-                        f"⚠ {lo}…{hi} · {watch['hits']} hits",
+                status_square(sd, (24, y + 20, 30, y + 26), "lit", th.warn)
+                sd.text((35, y + 16),
+                        f"{lo}…{hi} · {watch['hits']} HITS",
                         font=fs, fill=th.warn)
         if not fields:
-            sd.text((24, 10), "no longer heard — values will return "
-                    "with the next frame", font=T.font(12), fill=th.muted)
+            sd.text((24, 12), "NOT HEARD — VALUES RETURN WITH NEXT FRAME",
+                    font=T.font(T.SUB, mono=True), fill=th.muted)
         self.paste_list(LIST_TOP, pane_h, surf)
 
     def _draw_bottom(self, d, th, w, h):
@@ -507,19 +554,19 @@ class N2kScreen(Screen):
             pgn, src = self.sel
             sight = (pgn, None) in self.alerts.appear \
                 or (pgn, src) in self.alerts.appear
+            # an armed alert is caution amber, not red — nothing is wrong yet
             b = Button((14, y, w - 14 - 78, y + BOT_H - 6),
-                       "Sight alert: ON" if sight else "Alert on sight",
-                       kind="danger" if sight else "normal", font_size=14)
+                       "SIGHT ALERT ARMED" if sight else "ALERT ON SIGHT",
+                       color=th.warn if sight else None, font_size=14)
             b.draw(d, th)
             self._btns["sight"] = b.box
-            d.text((w - 74, y + 6), "tap field →", font=T.font(10),
-                   fill=th.muted)
-            d.text((w - 74, y + 18), "range alert", font=T.font(10),
-                   fill=th.muted)
+            fh = T.font(9, mono=True)
+            d.text((w - 74, y + 8), "TAP FIELD →", font=fh, fill=th.muted)
+            d.text((w - 74, y + 20), "RANGE ALERT", font=fh, fill=th.muted)
             return
         busy = self.export_task and not self.export_task.done
         b = Button((14, y, w // 2 - 4, y + BOT_H - 6),
-                   "Saving…" if busy else "Save log", kind="primary",
+                   "SAVING…" if busy else "SAVE LOG", kind="primary",
                    font_size=15)
         b.enabled = not busy and self._stats["log"] > 0
         b.draw(d, th)
@@ -527,26 +574,31 @@ class N2kScreen(Screen):
         state = self._node_state()
         if state != gnss.OFF or self._gnss_eligible():
             # the one TX affordance in the UI — unmistakable label, and a
-            # bus action, so it lives on the bus screen (not the GPS tile)
-            label, kind = {
-                gnss.OFF: ("Source GNSS → bus", "primary"),
-                gnss.CLAIMING: ("GNSS: claiming…", "normal"),
-                gnss.ACTIVE: ("GNSS ■ stop", "danger"),
-                gnss.CANNOT_CLAIM: ("GNSS: no address", "danger"),
-                gnss.STOPPED_FIX: ("GNSS: fix lost ■", "normal"),
+            # bus action, so it lives on the bus screen (not the GPS tile).
+            # Stop / fix-lost are amber stand-downs; red only for the
+            # genuine fault (address claim lost).
+            label, kind, col = {
+                gnss.OFF: ("SOURCE GNSS → BUS", "primary", None),
+                gnss.CLAIMING: ("CLAIMING…", "normal", None),
+                gnss.ACTIVE: ("GNSS ■ STOP", "normal", th.warn),
+                gnss.CANNOT_CLAIM: ("NO ADDRESS", "danger", None),
+                gnss.STOPPED_FIX: ("FIX LOST ■", "normal", th.warn),
             }[state]
             gb = Button((w // 2 + 4, y, w - 14, y + BOT_H - 6), label,
-                        kind=kind, font_size=13)
+                        kind=kind, color=col, font_size=13)
             gb.draw(d, th)
             self._btns["gnss"] = gb.box
             return
-        info = f"{self._stats['log']:,} rec"
+        x0 = w // 2 + 8
+        info = f"{self._stats['log']:,} REC"
         if self._stats["non_n2k"]:
-            info += " · 11-bit!"
-        d.text((w // 2 + 8, y + 4), info, font=T.font(12, mono=True),
-               fill=th.muted)
-        d.text((w // 2 + 8, y + 20), self.status[:22], font=T.font(11),
-               fill=th.muted)
+            info += " · 11-BIT!"
+        d.text((x0, y + 4), info, font=T.font(11, bold=True, mono=True),
+               fill=th.warn if self._stats["non_n2k"] else th.muted)
+        d.text((x0, y + 24), spaced("LOG"),
+               font=T.font(8, bold=True, mono=True), fill=th.muted)
+        lit = min(8, math.ceil(self._stats["log"] * 8 / n2k.RECORD_MAX))
+        seg_row(d, x0 + 36, y + 22, lit, 8, th.accent, th.card_hi)
 
     # ------------------------------------------------------------------ input
     def _in(self, key, x, y):

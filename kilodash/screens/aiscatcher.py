@@ -20,7 +20,7 @@ import subprocess
 import time
 
 from .. import theme as T, webapp
-from ..widgets import Button, Keyboard, rrect
+from ..widgets import Button, Keyboard, spaced
 from .webapp_base import WebAppScreen
 
 BASE = "http://127.0.0.1:8100"
@@ -133,56 +133,61 @@ class AisCatcherScreen(WebAppScreen):
         gap = 8
         cw = (w - 12 * 2 - gap) / 2
 
-        # RX feedback tiles
+        # RX feedback readouts — hard-edged instrument cells
         tile_h = 58
         for i, (label, val, unit) in enumerate((
-                ("VESSELS", self.vessels, "seen now"),
-                ("MESSAGES", self.msg_rate, "per sec"))):
+                ("VESSELS", self.vessels, "SEEN NOW"),
+                ("MESSAGES", self.msg_rate, "PER SEC"))):
             x0 = 12 + i * (cw + gap)
-            rrect(d, (x0, top, x0 + cw, top + tile_h), 10, fill=th.card)
-            d.text((x0 + 10, top + 5), label, font=T.font(11, bold=True),
-                   fill=th.muted)
+            d.rectangle((x0, top, x0 + cw, top + tile_h), fill=th.card,
+                        outline=th.card_hi, width=1)
+            d.text((x0 + 10, top + 5), spaced(label),
+                   font=T.font(9, bold=True, mono=True), fill=th.muted)
             shown = "—" if val is None else str(val)
-            d.text((x0 + 10, top + 20), shown,
+            d.text((x0 + 10, top + 19), shown,
                    font=T.font(22, bold=True, mono=True), fill=th.accent)
-            d.text((x0 + 10, top + 44), unit, font=T.font(10), fill=th.muted)
+            d.text((x0 + 10, top + 44), spaced(unit),
+                   font=T.font(9, bold=True, mono=True), fill=th.muted)
         top += tile_h + 10
 
         # own station + TX
-        d.text((14, top), "OWN STATION (TX)", font=T.font(11, bold=True),
-               fill=th.muted)
+        d.text((14, top), spaced("OWN STATION · TX"),
+               font=T.font(10, bold=True, mono=True), fill=th.muted)
         top += 18
-        # MMSI field (tap to edit)
+        # MMSI field (tap to edit) — same hit box, hard-edged cell
         fh = 40
-        rrect(d, (12, top, w - 12, top + fh), 9, fill=th.card,
-              outline=th.accent, width=1)
-        d.text((22, top + 5), "MMSI", font=T.font(10), fill=th.muted)
-        d.text((22, top + 18), self.mmsi or "tap to set",
+        d.rectangle((12, top, w - 12, top + fh), fill=th.card,
+                    outline=th.accent, width=1)
+        d.text((22, top + 5), spaced("MMSI"),
+               font=T.font(9, bold=True, mono=True), fill=th.muted)
+        d.text((22, top + 18), self.mmsi or spaced("TAP TO SET"),
                font=T.font(16, bold=True, mono=True),
                fill=th.fg if self.mmsi else th.muted)
         self._btns["mmsi"] = Button((12, top, w - 12, top + fh), "", font_size=1)
         top += fh + 8
 
-        # Transmit toggle (gated on TX hardware + a confirm/arm tap)
+        # Transmit toggle (gated on TX hardware + a confirm/arm tap);
+        # armed/transmitting wear caution amber — red stays for faults
         ready = _tx_ready()
         armed = time.monotonic() < self._tx_arm
         if self.transmitting:
-            label, kind = "◉ TRANSMITTING — stop", "danger"
+            label, color = "TRANSMITTING · STOP", th.warn
         elif armed:
-            label, kind = "Confirm: transmit test", "danger"
+            label, color = "CONFIRM TRANSMIT", th.warn
         else:
-            label, kind = "Transmit test", "primary"
-        b = Button((12, top, w - 12, top + 42), label, kind=kind, font_size=15)
+            label, color = "TRANSMIT TEST", None
+        b = Button((12, top, w - 12, top + 42), label, kind="primary",
+                   color=color, font_size=15)
         b.enabled = ready or self.transmitting
         b.draw(d, th)
         self._btns["tx"] = b
         top += 48
         if not ready and not self.transmitting:
-            d.text((16, top), "needs TX SDR (HackRF/Pluto) + ais-simulator",
-                   font=T.font(11), fill=th.muted)
+            d.text((16, top), "NEEDS TX SDR (HACKRF/PLUTO) + AIS-SIMULATOR",
+                   font=T.font(T.SUB, mono=True), fill=th.muted)
         else:
-            d.text((16, top), "contained bench test — low power, small antenna",
-                   font=T.font(11), fill=th.muted)
+            d.text((16, top), "CONTAINED BENCH TEST · LOW POWER, SMALL ANT",
+                   font=T.font(T.SUB, mono=True), fill=th.muted)
 
     def handle_app_tap(self, x, y):
         if self._btns.get("mmsi") and self._btns["mmsi"].hit(x, y):

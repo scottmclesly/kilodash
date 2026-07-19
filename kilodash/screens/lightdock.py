@@ -16,18 +16,28 @@ Zero-interaction happy path: dock → sync runs itself; redock reruns it. The
 only controls are Re-sync and the auto-pull-logs toggle (persisted in
 config.DEFAULTS, so Settings renders it too). Per the KioskSpeed guidance
 the animation region is the only dirty-rect repainting between log lines.
+
+Presentation follows the ship-instrument look (Cobb's Semiotic Standard):
+a hard-edged sync-state banner with a per-state glyph tops the band —
+INTERRUPTED wears caution amber, never red (nothing here is a fault) — the
+animation sits in the bracket-framed DOCK LINK instrument with a segmented
+transfer gauge, and log rows carry square status glyphs (lit = landed,
+slashed amber = interrupted, hollow = routine).
 """
 
 import time
 
 from .. import devices, lightdock, system, theme as T
-from ..widgets import Button, rrect
+from ..widgets import (Button, brackets, seg_row, spaced, state_glyph,
+                       status_square)
 from .base import Screen, HEADER_H
 
 # Fixed vertical bands; x-coordinates derive from app.w at draw time
 # (the panel is 320×480 portrait — never hardcode widths).
-ANIM_Y = HEADER_H + 4            # 48   the across-the-room animation
+ANIM_Y = HEADER_H + 4            # 48   dock-state banner + animation band
 ANIM_H = 168
+BANNER_H = 32                    # hard-edged sync-state banner in the band
+INST_TOP = ANIM_Y + BANNER_H + 6  # 86  bracket-framed DOCK LINK instrument
 CTRL_Y = ANIM_Y + ANIM_H + 6     # 222  Re-sync | auto-pull toggle
 CTRL_H = 48
 LOG_TOP = CTRL_Y + CTRL_H + 6    # 276  session log fills the rest
@@ -35,6 +45,15 @@ ROW_H = 19
 
 FAST_TICK = 0.15                 # animating: budget like the splash player
 IDLE_TICK = 1.0                  # settled: watch for a redock, nothing more
+
+# Semiotic-Standard banner states (kin to Tables' converter banner).
+# INTERRUPTED is amber "come look", not a red alarm — no hazard caps.
+STATES = {
+    lightdock.LightDockSync.SYNCING:     ("SYNCING", "accent", "spin"),
+    lightdock.LightDockSync.COMPLETE:    ("SYNC COMPLETE", "ok", "up"),
+    lightdock.LightDockSync.INTERRUPTED: ("INTERRUPTED", "warn", "fault"),
+    None:                                ("STANDING BY", "muted", "standby"),
+}
 
 
 class LightDockScreen(Screen):
@@ -131,11 +150,28 @@ class LightDockScreen(Screen):
         if self.engine:
             self._drawn_events = len(self.engine.events)
 
-    # ---- top pane: the across-the-room animation ----
+    # ---- top pane: sync-state banner + the across-the-room animation ----
     def _draw_anim(self, d, th, w):
-        rrect(d, (8, ANIM_Y, w - 8, ANIM_Y + ANIM_H), 12, fill=th.card)
+        d.rectangle((0, ANIM_Y, w, ANIM_Y + ANIM_H), fill=th.bg)
         state = self.engine.state if self.engine else None
-        cy = ANIM_Y + ANIM_H // 2
+        label, ckey, glyph = STATES.get(state, STATES[None])
+        col = getattr(th, ckey)
+        y0, y1 = ANIM_Y, ANIM_Y + BANNER_H
+        d.rectangle((12, y0, w - 12, y1), fill=th.card, outline=col, width=2)
+        state_glyph(d, glyph, 30, (y0 + y1) // 2, 9, col)
+        f = T.font(14, bold=True, mono=True)
+        lw = d.textlength(label, font=f)
+        d.text(((w - lw) / 2, y0 + (BANNER_H - 14) / 2 - 2), label,
+               font=f, fill=col)
+
+        # the one framed instrument: dock link pictogram + transfer gauge
+        iy0, iy1 = INST_TOP, ANIM_Y + ANIM_H
+        brackets(d, (12, iy0, w - 12, iy1), th.muted)
+        cap = spaced("DOCK LINK")
+        fc = T.font(9, bold=True, mono=True)
+        d.text((w - 22 - d.textlength(cap, font=fc), iy0 + 6), cap,
+               font=fc, fill=th.muted)
+        cy = 156
         if state == lightdock.LightDockSync.COMPLETE:
             self._draw_hug(d, th, w, cy)
         elif state == lightdock.LightDockSync.INTERRUPTED:
@@ -144,13 +180,13 @@ class LightDockScreen(Screen):
             self._draw_syncing(d, th, w, cy)
         else:                            # no Light / no session yet
             self._draw_devices(d, th, w * 0.24, w * 0.76, cy)
-            self._center_text(d, w, cy + ANIM_H * 0.34,
-                              "waiting for Light…", th.muted)
+            self._center_text(d, w, iy1 - 16, spaced("AWAITING LIGHT"),
+                              th.muted)
 
     def _slab(self, d, th, cx, cy, sw, sh, lit):
-        """One device silhouette: outlined slab with a lit screen inside."""
-        d.rounded_rectangle((cx - sw / 2, cy - sh / 2, cx + sw / 2,
-                             cy + sh / 2), radius=6, outline=th.fg, width=3)
+        """One device silhouette: hard-edged slab with a lit screen inside."""
+        d.rectangle((cx - sw / 2, cy - sh / 2, cx + sw / 2, cy + sh / 2),
+                    outline=th.fg, width=3)
         pad = max(6, sw // 6)
         d.rectangle((cx - sw / 2 + pad, cy - sh / 2 + pad,
                      cx + sw / 2 - pad, cy + sh / 2 - pad),
@@ -159,9 +195,9 @@ class LightDockScreen(Screen):
     def _draw_devices(self, d, th, prime_cx, light_cx, cy, lit=False):
         """Prime's slab (left, larger) and Light's (right, smaller); returns
         the cable endpoints between their inner edges."""
-        self._slab(d, th, prime_cx, cy, 58, 96, lit)
-        self._slab(d, th, light_cx, cy, 42, 66, lit)
-        return prime_cx + 29, light_cx - 21
+        self._slab(d, th, prime_cx, cy, 48, 76, lit)
+        self._slab(d, th, light_cx, cy, 36, 54, lit)
+        return prime_cx + 24, light_cx - 18
 
     def _draw_syncing(self, d, th, w, cy):
         # the silhouettes draw together as bytes move
@@ -176,17 +212,21 @@ class LightDockScreen(Screen):
         for i in range(3):
             f = (phase + i / 3.0) % 1.0
             px = x0 + (x1 - x0) * f
-            d.ellipse((px - 4, cy - 4, px + 4, cy + 4), fill=th.accent)
+            d.rectangle((px - 3, cy - 3, px + 3, cy + 3), fill=th.accent)
+        # transfer gauge: bounded bytes fraction, segmented
+        segs = 12
+        seg_row(d, 22, INST_TOP + 8, round(frac * segs), segs,
+                th.accent, th.card_hi, seg_h=10)
+        d.text((22 + segs * 10 + 6, INST_TOP + 8), f"{int(frac * 100):3d}%",
+               font=T.font(10, bold=True, mono=True), fill=th.muted)
 
     def _draw_hug(self, d, th, w, cy):
-        # devices together, steady glow — unambiguous at 3 m
+        # devices together, one steady registration ring — unambiguous at 3 m
         cx = w / 2
-        self._draw_devices(d, th, cx - 31, cx + 23, cy, lit=True)
-        for grow, col in ((14, th.muted), (26, th.card_hi)):
-            d.rounded_rectangle((cx - 62 - grow, cy - 48 - grow,
-                                 cx + 44 + grow, cy + 48 + grow),
-                                radius=14, outline=col, width=2)
-        d.ellipse((cx - 9, cy - 5, cx - 1, cy + 3), fill=th.ok)
+        self._draw_devices(d, th, cx - 27, cx + 23, cy, lit=True)
+        d.rectangle((cx - 63, cy - 50, cx + 53, cy + 50),
+                    outline=th.muted, width=2)
+        status_square(d, (cx - 8, cy - 4, cx, cy + 4), "lit", th.ok)
 
     def _draw_broken(self, d, th, w, cy):
         # sad face + visibly broken cable — "come look", not an alarm
@@ -197,8 +237,8 @@ class LightDockScreen(Screen):
         for sx, sgn in ((mid - 16, 1), (mid + 16, -1)):     # frayed ends
             d.line((sx, cy, sx + 7 * sgn, cy - 7), fill=th.warn, width=2)
             d.line((sx, cy, sx + 7 * sgn, cy + 7), fill=th.warn, width=2)
-        fy = cy - ANIM_H * 0.28
-        r = 21
+        fy = cy - 44
+        r = 20
         d.ellipse((mid - r, fy - r, mid + r, fy + r), outline=th.warn, width=3)
         for ex in (-8, 8):
             d.ellipse((mid + ex - 3, fy - 8, mid + ex + 3, fy - 2),
@@ -206,8 +246,8 @@ class LightDockScreen(Screen):
         d.arc((mid - 11, fy + 4, mid + 11, fy + 22), 200, 340,
               fill=th.warn, width=3)
 
-    def _center_text(self, d, w, y, text, col, size=14):
-        f = T.font(size)
+    def _center_text(self, d, w, y, text, col, size=10):
+        f = T.font(size, bold=True, mono=True)
         d.text((w / 2 - d.textlength(text, font=f) / 2, y), text,
                font=f, fill=col)
 
@@ -215,16 +255,16 @@ class LightDockScreen(Screen):
     def _draw_controls(self, d, th, w):
         running = self._running()
         resync = Button((14, CTRL_Y, w // 2 - 4, CTRL_Y + CTRL_H),
-                        "Syncing…" if running else "Re-sync",
-                        kind="primary", font_size=17)
+                        "SYNCING" if running else "RE-SYNC",
+                        kind="primary", font_size=16)
         resync.enabled = not running
         resync.draw(d, th)
         self._btns["resync"] = resync.box if resync.enabled else None
 
         pull = bool(self.app.config["lightdock_pull_logs"])
         tog = Button((w // 2 + 4, CTRL_Y, w - 14, CTRL_Y + CTRL_H),
-                     "Pull logs: %s" % ("ON" if pull else "OFF"),
-                     kind="ghost", font_size=15)
+                     "PULL LOGS %s" % ("ON" if pull else "OFF"),
+                     kind="ghost", font_size=14)
         tog.draw(d, th)
         d.rectangle((w // 2 + 12, CTRL_Y + CTRL_H - 8, w - 22,
                      CTRL_Y + CTRL_H - 5), fill=th.ok if pull else th.muted)
@@ -232,27 +272,33 @@ class LightDockScreen(Screen):
 
     # ---- bottom pane: the session-only log ----
     def _draw_log(self, d, th, w, h):
-        rrect(d, (8, LOG_TOP, w - 8, h - 6), 10, fill=th.card)
+        d.rectangle((8, LOG_TOP, w - 8, h - 6), fill=th.card,
+                    outline=th.card_hi, width=1)
+        d.text((16, LOG_TOP + 5), spaced("SESSION LOG"),
+               font=T.font(9, bold=True, mono=True), fill=th.muted)
         events = list(self.engine.events) if self.engine else []
         if not events:
-            d.text((22, LOG_TOP + 12),
-                   "Dock Scottina Light to sync" if not self._running()
-                   else "starting session…",
-                   font=T.font(13), fill=th.muted)
+            d.text((16, LOG_TOP + 26),
+                   "DOCK SCOTTINA LIGHT TO SYNC" if not self._running()
+                   else spaced("OPENING SESSION"),
+                   font=T.font(10, bold=True, mono=True), fill=th.muted)
             return
-        rows = (h - 6 - LOG_TOP - 12) // ROW_H
-        f_t = T.font(11, mono=True)
-        f_m = T.font(12, mono=True)
-        y = LOG_TOP + 8
+        top = LOG_TOP + 20
+        rows = (h - 6 - top - 4) // ROW_H
+        f_t = T.font(10, mono=True)
+        f_m = T.font(11, mono=True)
+        y = top
         for ts, text in events[-rows:]:              # newest at the bottom
-            col = th.fg
+            # square row status: lit = landed, slashed amber = interrupted
+            mode, scol, col = "hollow", th.muted, th.fg
             if text.startswith("interrupted") or "FAILED" in text:
-                col = th.warn
+                mode, scol, col = "slash", th.warn, th.warn
             elif text.startswith("session complete"):
-                col = th.ok
+                mode, scol, col = "lit", th.ok, th.ok
+            status_square(d, (16, y + 4, 24, y + 12), mode, scol, width=1)
             stamp = time.strftime("%H:%M:%S", time.localtime(ts))
-            d.text((18, y + 1), stamp, font=f_t, fill=th.muted)
-            d.text((84, y), text[:60], font=f_m, fill=col)
+            d.text((30, y + 1), stamp, font=f_t, fill=th.muted)
+            d.text((84, y), text[:33], font=f_m, fill=col)
             y += ROW_H
 
     # ------------------------------------------------------------------ input

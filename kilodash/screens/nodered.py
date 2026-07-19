@@ -21,7 +21,7 @@ harmlessly (404) — the panel still launches and confirms.
 """
 
 from .. import theme as T, webapp
-from ..widgets import Button, rrect
+from ..widgets import Button, spaced
 from .webapp_base import WebAppScreen
 
 BASE = "http://127.0.0.1:1880/kilodash"
@@ -72,9 +72,9 @@ class NodeRedScreen(WebAppScreen):
         gap = 8
         cw = (w - 12 * 2 - gap) / 2
 
-        # 6 feedback fields (3x2)
-        d.text((14, top), "DEBUG FEEDBACK", font=T.font(11, bold=True),
-               fill=th.muted)
+        # 6 feedback fields (3x2) — hard-edged mini-instrument cells
+        d.text((14, top), spaced("DEBUG FEEDBACK"),
+               font=T.font(10, bold=True, mono=True), fill=th.muted)
         top += 18
         fh = 46
         rows = (len(self.fields) + 1) // 2
@@ -82,14 +82,17 @@ class NodeRedScreen(WebAppScreen):
             r, c = divmod(i, 2)
             x0 = 12 + c * (cw + gap)
             y0 = top + r * (fh + gap)
-            rrect(d, (x0, y0, x0 + cw, y0 + fh), 9, fill=th.card)
-            d.text((x0 + 10, y0 + 6), fld["label"], font=T.font(11), fill=th.muted)
+            d.rectangle((x0, y0, x0 + cw, y0 + fh), fill=th.card,
+                        outline=th.card_hi, width=1)
+            d.text((x0 + 10, y0 + 6), spaced(fld["label"][:10].upper()),
+                   font=T.font(9, bold=True, mono=True), fill=th.muted)
             d.text((x0 + 10, y0 + 21), fld["value"],
                    font=T.font(18, bold=True, mono=True), fill=th.accent)
 
-        # 6 trigger buttons (3x2)
+        # 6 trigger buttons (3x2) — terse caps, geometry unchanged
         top += rows * (fh + gap) - gap + 6
-        d.text((14, top), "TRIGGERS", font=T.font(11, bold=True), fill=th.muted)
+        d.text((14, top), spaced("TRIGGERS"),
+               font=T.font(10, bold=True, mono=True), fill=th.muted)
         top += 18
         bh = 44
         for i, btn in enumerate(self.buttons):
@@ -97,8 +100,8 @@ class NodeRedScreen(WebAppScreen):
             x0 = 12 + c * (cw + gap)
             y0 = top + r * (bh + gap)
             kind = "primary" if self.web.state == webapp.UP else "normal"
-            b = Button((x0, y0, x0 + cw, y0 + bh), btn["label"], kind=kind,
-                       font_size=15)
+            b = Button((x0, y0, x0 + cw, y0 + bh), btn["label"][:10].upper(),
+                       kind=kind, font_size=15)
             b.enabled = self.web.state == webapp.UP
             b.draw(d, th)
             self._btns[f"btn{i}"] = b

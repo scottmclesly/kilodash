@@ -9,7 +9,7 @@ rotation: whichever mapping fits the taps wins.
 
 from .. import theme as T
 from ..touch import apply_map
-from ..widgets import Button
+from ..widgets import Button, brackets, spaced, status_square
 from .base import Screen
 
 
@@ -83,18 +83,19 @@ class CalibrationScreen(Screen):
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         if self.result is None:
-            d.text((0, 90), "", font=T.font(10))
-            msg = "Tap the circle"
-            f = T.font(22, bold=True)
+            msg = spaced("TAP THE MARK")
+            f = T.font(16, bold=True, mono=True)
             tw = d.textlength(msg, font=f)
             d.text((w / 2 - tw / 2, h / 2 - 60), msg, font=f, fill=th.fg)
-            prog = f"{self.i + 1} / {len(self._targets)}"
-            pf = T.font(16)
+            prog = f"TARGET {self.i + 1} OF {len(self._targets)}"
+            pf = T.font(11, bold=True, mono=True)
             pw = d.textlength(prog, font=pf)
-            d.text((w / 2 - pw / 2, h / 2 - 26), prog, font=pf, fill=th.muted)
-            # current target crosshair
+            d.text((w / 2 - pw / 2, h / 2 - 28), prog, font=pf, fill=th.muted)
+            # current target: crosshair inside corner registration brackets
             tx, ty = self._targets[self.i]
             r = 26
+            brackets(d, (tx - r - 14, ty - r - 14, tx + r + 14, ty + r + 14),
+                     th.muted, arm=10)
             d.ellipse((tx - r, ty - r, tx + r, ty + r), outline=th.accent, width=3)
             d.ellipse((tx - 4, ty - 4, tx + 4, ty + 4), fill=th.accent)
             d.line((tx - r - 8, ty, tx + r + 8, ty), fill=th.accent, width=1)
@@ -103,26 +104,27 @@ class CalibrationScreen(Screen):
 
         # result
         swap, invx, invy, err = self.result
-        f = T.font(24, bold=True)
-        msg = "Calibrated"
+        f = T.font(20, bold=True, mono=True)
+        msg = spaced("CALIBRATED")
         tw = d.textlength(msg, font=f)
         d.text((w / 2 - tw / 2, 80), msg, font=f, fill=th.ok)
-        lines = [
-            f"swap XY : {'on' if swap else 'off'}",
-            f"invert X: {'on' if invx else 'off'}",
-            f"invert Y: {'on' if invy else 'off'}",
-            f"fit error: {err / len(self.samples):.0f}px avg",
-        ]
         y = 140
-        for ln in lines:
-            d.text((40, y), ln, font=T.font(17, mono=True), fill=th.fg)
+        for label, on in (("SWAP XY", swap), ("INVERT X", invx),
+                          ("INVERT Y", invy)):
+            status_square(d, (40, y + 2, 52, y + 14),
+                          "lit" if on else "hollow",
+                          th.ok if on else th.muted)
+            d.text((64, y), f"{label:<9}· {'ON' if on else 'OFF'}",
+                   font=T.font(15, bold=True, mono=True), fill=th.fg)
             y += 30
-        d.text((40, y + 6), "Tap Done to check it, or Redo.",
-               font=T.font(14), fill=th.muted)
+        d.text((64, y), f"FIT ERROR · {err / len(self.samples):.0f} PX AVG",
+               font=T.font(12, mono=True), fill=th.muted)
+        d.text((40, y + 30), "TAP DONE TO VERIFY · REDO TO RETRY",
+               font=T.font(10, bold=True, mono=True), fill=th.muted)
 
-        self.done_btn = Button((16, h - 130, w - 16, h - 74), "Done",
-                               kind="primary", font_size=22)
-        self.redo_btn = Button((16, h - 66, w - 16, h - 14), "Redo",
-                               kind="normal", font_size=20)
+        self.done_btn = Button((16, h - 130, w - 16, h - 74), "DONE",
+                               kind="primary", font_size=20)
+        self.redo_btn = Button((16, h - 66, w - 16, h - 14), "REDO",
+                               kind="normal", font_size=18)
         self.done_btn.draw(d, th)
         self.redo_btn.draw(d, th)

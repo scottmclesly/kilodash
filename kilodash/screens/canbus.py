@@ -32,6 +32,13 @@ CanTick dialing in over WiFi appears as an ordinary `slcan0`, listens
 USB provisioning push when a CanTick is plugged in, and — only when the Pi
 has no uplink at all — raises the reversible fallback AP. Everything
 CanTick is torn down on leave. Listen-only is enforced on the device.
+
+Presentation follows the ship-instrument look ratified on the Pomodoro
+refactor (Cobb's Semiotic Standard): a hard-edged bus-state banner with a
+per-state glyph — hazard cap on RX faults only — bracket-framed traffic
+pane, caps-mono readouts, square indicators, and a segmented bus-load
+gauge. Red stays reserved for genuine faults (a dead RX socket); stopping
+a log or striking a watch is an amber stand-down, never red.
 """
 
 import glob
@@ -44,7 +51,8 @@ from PIL import Image, ImageDraw
 
 from .. import busmon, cantick, system, theme as T
 from ..devices import cantick_tty
-from ..widgets import Button, Keyboard, rrect
+from ..widgets import (Button, Keyboard, brackets, hazard, seg_row, spaced,
+                       state_glyph, status_square)
 from .base import Screen, HEADER_H
 
 CAP_DIR = "/opt/kilodash/captures"
@@ -68,6 +76,16 @@ LIST_TOP = CHIP_Y + CHIP_H + 6   # 180  bus tab: seen-IDs / live list pane
 BOT_H = 46                       #      bus tab: bottom bar (Save + stats)
 ROW_H = 34                       # two-line seen-IDs rows (tap targets)
 LIVE_ROW_H = 20                  # one-line candump-style live rows
+
+# Banner idiom keyed on what the screen can actually sense: this screen
+# never reads controller state (error-passive/bus-off live in netlink, and
+# presentation must not add I/O), so a dead RX socket is the fault surface.
+BUS_STATES = {
+    "listen":  {"label": "LISTENING",    "col": "ok",    "glyph": "up"},
+    "standby": {"label": "STANDING BY",  "col": "muted", "glyph": "standby"},
+    "fault":   {"label": "RX FAULT",     "col": "bad",   "glyph": "fault"},
+    "none":    {"label": "NO INTERFACE", "col": "muted", "glyph": "standby"},
+}
 
 
 def _rx_frames(iface):
@@ -529,45 +547,71 @@ class CanScreen(Screen):
             self._draw_bottom(d, th, w, h)
 
     # ---- shared chrome ----
+    def _bus_state(self):
+        if not self.iface:
+            return "none"
+        r = self.reader
+        if r and r.error and not r.alive:
+            return "fault"
+        if r and r.alive:
+            return "listen"
+        return "standby"
+
     def _draw_iface_card(self, d, th, w):
+        """Bus-state banner: glyph + caps-mono state + iface at left, the
+        tappable CanTick source chip at right. Hazard cap on RX fault only."""
         y = IFACE_Y
-        rrect(d, (14, y, w - 14, y + IFACE_H), 10, fill=th.card)
-        d.text((26, y + 6), "Interface", font=T.font(12), fill=th.muted)
-        d.text((26, y + 22), self.iface or "not found",
-               font=T.font(19, bold=True, mono=True),
-               fill=th.ok if self.iface else th.bad)
+        st = BUS_STATES[self._bus_state()]
+        col = getattr(th, st["col"])
+        d.rectangle((14, y, w - 14, y + IFACE_H), fill=th.card,
+                    outline=col, width=2)
+        if st["col"] == "bad":            # fault wears the caution cap
+            hazard(d, (150, y + 6, 204, y + IFACE_H - 6), col)
+        state_glyph(d, st["glyph"], 34, y + IFACE_H // 2, 11, col)
+        d.text((52, y + 8), st["label"],
+               font=T.font(14, bold=True, mono=True), fill=col)
+        d.text((52, y + 27), self.iface or spaced("NO IFACE"),
+               font=T.font(11, bold=True, mono=True),
+               fill=th.fg if self.iface else th.muted)
         # CanTick source-mode chip (tap toggles the WiFi link)
         state = self.link.state if (self.ct_blk["enabled"] and self.link) \
             else "off"
-        chip_col = {"up": th.ok, "listening": th.warn,
-                    "backoff": th.warn}.get(state, th.muted)
-        rrect(d, (w - 110, y + 10, w - 24, y + IFACE_H - 10), 8,
-              fill=th.card_hi)
-        d.ellipse((w - 102, y + 20, w - 92, y + 30), fill=chip_col)
-        d.text((w - 86, y + 17), "CanTick", font=T.font(13, bold=True),
+        chip_box = (w - 110, y + 10, w - 24, y + IFACE_H - 10)
+        d.rectangle(chip_box, fill=th.card_hi)
+        sq = (w - 102, y + 20, w - 92, y + 30)
+        if state == "up":
+            status_square(d, sq, "lit", th.ok)
+        elif state in ("listening", "backoff"):
+            status_square(d, sq, "slash", th.warn)
+        else:
+            status_square(d, sq, "hollow", th.muted)
+        d.text((w - 86, y + 18), "CANTICK",
+               font=T.font(11, bold=True, mono=True),
                fill=th.fg if state != "off" else th.muted)
-        self._btns["cantick"] = (w - 110, y + 10, w - 24, y + IFACE_H - 10)
+        self._btns["cantick"] = chip_box
 
     def _draw_tabs(self, d, th, w):
         y = TAB_Y
         half = (w - 28) // 2
-        for key, label, x0 in (("bus", "Bus", 14),
-                               ("setup", "Setup", 14 + half)):
+        f = T.font(12, bold=True, mono=True)
+        for key, label, x0 in (("bus", "BUS", 14),
+                               ("setup", "SETUP", 14 + half)):
             active = self.tab == key
-            rrect(d, (x0, y, x0 + half, y + TAB_H), 8,
-                  fill=th.card_hi if active else th.card)
-            f = T.font(15, bold=True)
-            tw = d.textlength(label, font=f)
-            d.text((x0 + half / 2 - tw / 2, y + 7), label, font=f,
+            box = (x0, y, x0 + half, y + TAB_H)
+            d.rectangle(box, fill=th.card_hi if active else th.card,
+                        outline=th.accent if active else None, width=1)
+            lab = spaced(label)
+            tw = d.textlength(lab, font=f)
+            d.text((x0 + half / 2 - tw / 2, y + 9), lab, font=f,
                    fill=th.accent if active else th.muted)
-            self._btns[f"tab_{key}"] = (x0, y, x0 + half, y + TAB_H)
+            self._btns[f"tab_{key}"] = box
 
     # ---- bus tab ----
     def _draw_chips(self, d, th, w):
         y = CHIP_Y
         d.rectangle((0, y - 2, w, LIST_TOP - 2), fill=th.bg)
         chips = [
-            ("live", "Live" if self.view_live else "IDs", True),
+            ("live", "LIVE" if self.view_live else "IDS", True),
             ("watched", "W", self.watched_only),
             ("changed", "Δ", self.changed_only),
         ]
@@ -575,14 +619,15 @@ class CanScreen(Screen):
             chips.append(("idfilt",
                           busmon.fmt_id(*self.filt_id)[:8] + " ×", True))
         x = 14
-        f = T.font(13, bold=True)
+        f = T.font(12, bold=True, mono=True)
         for key, label, on in chips:
             cw = max(40, d.textlength(label, font=f) + 18)
-            rrect(d, (x, y, x + cw, y + CHIP_H - 4), 8,
-                  fill=th.card_hi if on else th.card)
-            d.text((x + 9, y + 5), label, font=f,
+            box = (x, y, x + cw, y + CHIP_H - 4)
+            d.rectangle(box, fill=th.card_hi if on else th.card,
+                        outline=th.accent if on else th.card_hi, width=1)
+            d.text((x + 9, y + 6), label, font=f,
                    fill=th.accent if on else th.muted)
-            self._btns[f"chip_{key}"] = (x, y, x + cw, y + CHIP_H - 4)
+            self._btns[f"chip_{key}"] = box
             x += cw + 6
         # alert badge — the non-modal alarm surface (badge + row flash)
         hits = self._stats["hits"]
@@ -590,9 +635,10 @@ class CanScreen(Screen):
             label = f"⚠ {min(hits, 999)}"
             bw = d.textlength(label, font=f) + 16
             loud = self._stats["alerting"] > 0
-            rrect(d, (w - 14 - bw, y, w - 14, y + CHIP_H - 4), 8,
-                  fill=th.warn if loud else th.card_hi)
-            d.text((w - 14 - bw + 8, y + 5), label, font=f,
+            d.rectangle((w - 14 - bw, y, w - 14, y + CHIP_H - 4),
+                        fill=th.warn if loud else th.card,
+                        outline=th.warn, width=1)
+            d.text((w - 14 - bw + 8, y + 6), label, font=f,
                    fill=th.ink if loud else th.warn)
 
     def _visible_rows(self):
@@ -617,11 +663,14 @@ class CanScreen(Screen):
         if not rows:
             self.content_h = pane_h
             d.rectangle((0, LIST_TOP, w, LIST_TOP + pane_h), fill=th.bg)
-            msg = ("waiting for frames…" if self.reader and self.reader.alive
+            msg = (spaced("AWAITING FRAMES")
+                   if self.reader and self.reader.alive
                    else (self.reader.error if self.reader and self.reader.error
-                         else "no RX socket"))
-            d.text((24, LIST_TOP + 14), msg[:40], font=T.font(13),
-                   fill=th.muted)
+                         else spaced("NO RX SOCKET")))
+            d.text((24, LIST_TOP + 14), msg[:40],
+                   font=T.font(11, bold=True, mono=True), fill=th.muted)
+            brackets(d, (4, LIST_TOP + 1, w - 4, LIST_TOP + pane_h - 1),
+                     th.muted, arm=10)
             return
         self.content_h = max(len(rows) * ROW_H + 4, pane_h)
         surf = Image.new("RGB", (w, self.content_h), th.bg)
@@ -634,9 +683,9 @@ class CanScreen(Screen):
             y = i * ROW_H
             box = (14, y + 1, w - 14, y + ROW_H - 1)
             if r["alert"]:
-                rrect(sd, box, 8, fill=th.card_hi, outline=th.warn, width=2)
+                sd.rectangle(box, fill=th.card_hi, outline=th.warn, width=2)
             else:
-                rrect(sd, box, 8, fill=th.card)
+                sd.rectangle(box, fill=th.card)
             watched = bool(r["watch_pos"])
             sd.text((24, y + 3), busmon.fmt_id(r["id"], r["ext"]),
                     font=fid, fill=th.accent if watched else th.fg)
@@ -656,14 +705,19 @@ class CanScreen(Screen):
                 sd.text((24, y + 17), "R (remote frame)", font=fsm,
                         fill=th.muted)
         self.paste_list(LIST_TOP, pane_h, surf)
+        # registration brackets frame the traffic pane (fixed, rows scroll under)
+        brackets(d, (4, LIST_TOP + 1, w - 4, LIST_TOP + pane_h - 1),
+                 th.muted, arm=10)
 
     def _draw_live(self, d, th, w, pane_h):
         n = max(4, int(pane_h // LIVE_ROW_H) + 6)
         recs = self.mon.tail(n, **self._filters())
         self.content_h = pane_h              # newest-first, no scroll needed
         d.rectangle((0, LIST_TOP, w, LIST_TOP + pane_h), fill=th.bg)
+        d.text((16, LIST_TOP + 3), spaced("LIVE TAP"),
+               font=T.font(9, bold=True, mono=True), fill=th.muted)
         f = T.font(12, mono=True)
-        y = LIST_TOP + 2
+        y = LIST_TOP + 18
         for ts, cid, ext, rtr, data, changed in recs:
             if y > LIST_TOP + pane_h - LIVE_ROW_H:
                 break
@@ -674,24 +728,27 @@ class CanScreen(Screen):
                    fill=th.warn if changed else th.fg)
             y += LIVE_ROW_H
         if not recs:
-            d.text((24, LIST_TOP + 14), "nothing in the ring yet",
-                   font=T.font(13), fill=th.muted)
+            d.text((24, LIST_TOP + 24), spaced("RING EMPTY"),
+                   font=T.font(11, bold=True, mono=True), fill=th.muted)
+        brackets(d, (4, LIST_TOP + 1, w - 4, LIST_TOP + pane_h - 1),
+                 th.muted, arm=10)
 
     def _draw_bottom(self, d, th, w, h):
         y = h - BOT_H - 4
         d.rectangle((0, y - 2, w, h), fill=th.bg)
         busy = self.export_task and not self.export_task.done
         b = Button((14, y, w // 2 - 4, y + BOT_H - 6),
-                   "Saving…" if busy else "Save ring", kind="primary",
+                   "SAVING…" if busy else "SAVE RING", kind="primary",
                    font_size=15)
         b.enabled = not busy and self._stats["ring"] > 0
         b.draw(d, th)
         self._btns["save"] = b.box if b.enabled else None
-        info = f"{self._stats['ring']:,} buf"
+        info = f"{self._stats['ring']:,} BUF"
         if self.logging:
             info += " · REC"
+        # REC is a deliberate capture, not a fault — amber, never red
         d.text((w // 2 + 8, y + 4), info, font=T.font(12, mono=True),
-               fill=th.bad if self.logging else th.muted)
+               fill=th.warn if self.logging else th.muted)
         d.text((w // 2 + 8, y + 20), self.status[:22], font=T.font(11),
                fill=th.muted)
 
@@ -710,10 +767,10 @@ class CanScreen(Screen):
         y = BODY_Y
         d.text((16, y + 2), busmon.fmt_id(cid, ext),
                font=T.font(20, bold=True, mono=True), fill=th.accent)
-        d.text((16, y + 26), f"{row['count']:,} frames · "
-               f"{row['rate']:.0f}/s" if row else "no longer heard",
-               font=T.font(12, mono=True), fill=th.muted)
-        cb = Button((w - 84, y, w - 14, y + 36), "Close", kind="ghost",
+        d.text((16, y + 26), f"{row['count']:,} FRAMES · "
+               f"{row['rate']:.0f}/S" if row else spaced("SIGNAL LOST"),
+               font=T.font(11, mono=True), fill=th.muted)
+        cb = Button((w - 84, y, w - 14, y + 36), "CLOSE", kind="ghost",
                     font_size=14)
         cb.draw(d, th)
         self._btns["grid_close"] = cb.box
@@ -732,8 +789,9 @@ class CanScreen(Screen):
             selected = self.sel_byte == p
             has = p < len(data)
             w_ = self.mon.watch_on(cid, p)
-            rrect(d, box, 8, fill=th.card_hi if selected else th.card,
-                  outline=th.accent if w_ else None, width=2)
+            d.rectangle(box, fill=th.card_hi if selected else th.card,
+                        outline=th.accent if w_ else th.card_hi,
+                        width=2 if w_ else 1)
             d.text((x0 + 8, y0 + 4), str(p), font=fsm, fill=th.muted)
             d.text((x0 + cw / 2 - 10, y0 + 16),
                    f"{data[p]:02X}" if has else "··", font=fhex,
@@ -744,35 +802,39 @@ class CanScreen(Screen):
                 d.text((x0 + cw - 8 - d.textlength(mark, font=fsm), y0 + 4),
                        mark, font=fsm, fill=th.accent)
             self._btns[f"cell_{p}"] = box
+        # the byte register is this mode's framed instrument
+        brackets(d, (4, y - 6, w - 4, y + 2 * ch + gap + 6), th.muted, arm=10)
         y += 2 * ch + gap + 10
         # watch actions for the selected byte
         if self.sel_byte is not None:
             p = self.sel_byte
             w_ = self.mon.watch_on(cid, p)
             half = (w - 28 - 8) // 2
-            b1 = Button((14, y, 14 + half, y + 42), "Alert: change",
-                        kind="primary", font_size=14)
-            b2 = Button((22 + half, y, w - 14, y + 42), "Alert: value…",
-                        kind="normal", font_size=14)
+            b1 = Button((14, y, 14 + half, y + 42), "ALERT ON Δ",
+                        kind="primary", font_size=13)
+            b2 = Button((22 + half, y, w - 14, y + 42), "ALERT ON VALUE…",
+                        kind="normal", font_size=13)
             b1.draw(d, th)
             b2.draw(d, th)
             self._btns["w_change"] = b1.box
             self._btns["w_match"] = b2.box
             y += 50
             if w_:
-                hits = f" ({w_['hits']} hit{'s' if w_['hits'] != 1 else ''})"
+                hits = f" ({w_['hits']} HIT{'S' if w_['hits'] != 1 else ''})"
+                # striking a watch is a stand-down, not a fault — amber
                 b3 = Button((14, y, w - 14, y + 40),
-                            "Remove watch" + hits, kind="danger", font_size=14)
+                            "REMOVE WATCH" + hits, color=th.warn,
+                            font_size=14)
                 b3.draw(d, th)
                 self._btns["w_clear"] = b3.box
                 y += 48
         else:
-            d.text((16, y + 4), "tap a byte to set a watch",
-                   font=T.font(13), fill=th.muted)
+            d.text((16, y + 4), "TAP A BYTE TO ARM A WATCH",
+                   font=T.font(10, bold=True, mono=True), fill=th.muted)
             y += 30
         filt_here = self.filt_id == self.sel
         fb = Button((14, y, w - 14, y + 40),
-                    "Clear ID filter" if filt_here else "Filter this ID",
+                    "CLEAR ID FILTER" if filt_here else "FILTER THIS ID",
                     kind="ghost", font_size=14)
         fb.draw(d, th)
         self._btns["grid_filt"] = fb.box
@@ -781,66 +843,84 @@ class CanScreen(Screen):
     def _draw_setup(self, d, th, w, h):
         y = BODY_Y
         # bitrate selector
-        rrect(d, (14, y, w - 14, y + 50), 10, fill=th.card)
+        d.rectangle((14, y, w - 14, y + 50), fill=th.card,
+                    outline=th.card_hi, width=1)
         self._btns["rate_prev"] = (14, y, 58, y + 50)
         self._btns["rate_next"] = (w - 58, y, w - 14, y + 50)
-        d.text((28, y + 12), "‹", font=T.font(28, bold=True), fill=th.accent)
-        d.text((w - 42, y + 12), "›", font=T.font(28, bold=True),
+        d.text((28, y + 11), "‹", font=T.font(28, bold=True), fill=th.accent)
+        d.text((w - 42, y + 11), "›", font=T.font(28, bold=True),
                fill=th.accent)
-        rate = f"{BITRATES[self.rate_idx]//1000} kbit/s"
-        rt = T.font(20, bold=True)
-        d.text((w / 2 - d.textlength(rate, font=rt) / 2, y + 13), rate,
+        fl = T.font(9, bold=True, mono=True)
+        lab = spaced("BITRATE")
+        d.text((w / 2 - d.textlength(lab, font=fl) / 2, y + 6), lab,
+               font=fl, fill=th.muted)
+        rate = f"{BITRATES[self.rate_idx]//1000} KBIT/S"
+        rt = T.font(18, bold=True, mono=True)
+        d.text((w / 2 - d.textlength(rate, font=rt) / 2, y + 21), rate,
                font=rt, fill=th.fg)
-        y += 58
+        y += 56
 
         # autodetect — shares the row with Provision when a CanTick is on USB
         provisionable = self.app.devices.has("cantick")
         det_right = (w // 2 - 4) if provisionable else (w - 14)
         det_btn = Button((14, y, det_right, y + 46),
-                         "Autodetect" if provisionable else
-                         "Autodetect bitrate", kind="normal", font_size=17)
+                         "AUTODETECT" if provisionable else
+                         "AUTODETECT BITRATE", kind="normal", font_size=15)
         det_btn.enabled = bool(self.iface) and self.detect_task is None
         det_btn.draw(d, th)
         self._btns["detect"] = det_btn.box if det_btn.enabled else None
         if provisionable:
             busy = self.prov_task is not None and not self.prov_task.done
             prov_btn = Button((w // 2 + 4, y, w - 14, y + 46),
-                              "Provisioning…" if busy else "Provision",
-                              kind="primary", font_size=17)
+                              "PROVISIONING…" if busy else "PROVISION",
+                              kind="primary", font_size=15)
             prov_btn.enabled = not busy
             prov_btn.draw(d, th)
             self._btns["provision"] = prov_btn.box if prov_btn.enabled else None
-        y += 54
+        y += 52
 
+        # stopping a log is a stand-down (amber), not a fault
         log_btn = Button((14, y, w - 14, y + 48),
-                         "Stop logging" if self.logging else "Start logging",
-                         kind="danger" if self.logging else "primary",
-                         font_size=18)
+                         "STOP LOGGING" if self.logging else "START LOGGING",
+                         kind="primary", font_size=16,
+                         color=th.warn if self.logging else None)
         log_btn.enabled = bool(self.iface)
         log_btn.draw(d, th)
         self._btns["log"] = log_btn.box if log_btn.enabled else None
-        y += 56
+        y += 54
 
-        rrect(d, (14, y, w - 14, y + 36), 8, fill=th.card)
-        d.text((26, y + 10), self.status[:34], font=T.font(14), fill=th.muted)
-        y += 44
+        d.rectangle((14, y, w - 14, y + 32), fill=th.card)
+        d.text((26, y + 8), self.status[:34], font=T.font(13), fill=th.muted)
+        y += 38
 
         # live traffic counter — repainted alone on the fast tick
-        rrect(d, (14, y, w - 14, y + 66), 10, fill=th.card)
-        d.text((26, y + 7), "RX FRAMES", font=T.font(11, bold=True),
-               fill=th.muted)
+        d.rectangle((14, y, w - 14, y + 66), fill=th.card,
+                    outline=th.card_hi, width=1)
+        d.text((26, y + 7), spaced("RX FRAMES"),
+               font=T.font(10, bold=True, mono=True), fill=th.muted)
         live = self.tick_interval == FAST_TICK   # frames seen recently
-        d.ellipse((w - 42, y + 9, w - 28, y + 23),
-                  fill=th.ok if live else th.card_hi)
+        status_square(d, (w - 40, y + 8, w - 28, y + 20),
+                      "lit" if live else "hollow",
+                      th.ok if live else th.muted)
         count = "—" if self.rx_count is None else f"{self.rx_count:,}"
-        d.text((26, y + 26), count, font=T.font(23, bold=True, mono=True),
+        d.text((26, y + 28), count, font=T.font(20, bold=True, mono=True),
                fill=th.fg)
-        rate = f"{self.rx_rate:.0f}/s" if live else "idle"
-        rf = T.font(15, bold=True, mono=True)
-        d.text((w - 28 - d.textlength(rate, font=rf), y + 34), rate, font=rf,
+        rate = f"{self.rx_rate:.0f}/S" if live else spaced("IDLE")
+        rf = T.font(13, bold=True, mono=True)
+        d.text((w - 28 - d.textlength(rate, font=rf), y + 26), rate, font=rf,
                fill=th.accent if live else th.muted)
+        # est. bus load vs the selected bitrate (~112 bits/stuffed frame);
+        # bounded, so it gets the segmented gauge
+        load = self.rx_rate * 112 / BITRATES[self.rate_idx]
+        seg_x = w - 24 - (8 * 10 - 2)
+        llab = spaced("LOAD")
+        d.text((seg_x - 8 - d.textlength(llab, font=fl), y + 48), llab,
+               font=fl, fill=th.muted)
+        seg_row(d, seg_x, y + 46, min(8, round(load * 8)) if live else 0, 8,
+                th.warn if load >= 0.8 else th.ok, th.card_hi,
+                seg_w=8, seg_h=10)
         self._traffic_box = (0, y - 2, w, y + 68)
-        y += 74
+        y += 72
 
         if self.ct_blk["enabled"] and y + 50 < h:
             self._draw_cantick_card(d, th, y, w)
@@ -848,19 +928,23 @@ class CanScreen(Screen):
 
     def _draw_cantick_card(self, d, th, y, w):
         """Heartbeat health card (PROTOCOL.md §2): device, mode, rssi, live
-        rx/s, drop, and the fresh/stale badge (Signal K indicator style)."""
-        rrect(d, (14, y, w - 14, y + 50), 10, fill=th.card)
+        rx/s, drop, and the fresh/stale square (lit ok / slashed amber —
+        a stale heartbeat is degraded, not a fault)."""
+        d.rectangle((14, y, w - 14, y + 50), fill=th.card,
+                    outline=th.card_hi, width=1)
         rec = self.hb.latest() if self.hb else None
         if not rec:
             state = self.link.state if self.link else "off"
-            d.ellipse((24, y + 19, 36, y + 31), fill=th.card_hi)
-            d.text((44, y + 16), f"no CanTick heartbeat · link {state}",
-                   font=T.font(13), fill=th.muted)
+            status_square(d, (24, y + 19, 36, y + 31), "hollow", th.muted)
+            d.text((44, y + 17), f"NO HEARTBEAT · LINK {state.upper()}"[:27],
+                   font=T.font(11, bold=True, mono=True), fill=th.muted)
             return
-        dot = th.ok if rec["fresh"] else th.bad
-        d.ellipse((24, y + 9, 36, y + 21), fill=dot)
+        status_square(d, (24, y + 9, 36, y + 21),
+                      "lit" if rec["fresh"] else "slash",
+                      th.ok if rec["fresh"] else th.warn)
         head = f"{rec['name']} · {rec['mode'] or '?'} · {rec['rssi']}dBm"
-        d.text((44, y + 6), head[:30], font=T.font(14, bold=True), fill=th.fg)
+        d.text((44, y + 6), head[:26], font=T.font(12, bold=True, mono=True),
+               fill=th.fg)
         warn = self.hb.version_warning
         if warn:
             sub = warn
@@ -871,14 +955,15 @@ class CanScreen(Screen):
             sub = f"{age} · drop {rec['drop']}"
             sub_col = th.muted
         d.text((44, y + 27), sub[:20 if rec["drop_rising"] else 32],
-               font=T.font(13, mono=True), fill=sub_col)
-        # a rising drop counter is the early bus-overrun warning — make it loud
+               font=T.font(12, mono=True), fill=sub_col)
+        # a rising drop counter is the early bus-overrun warning — loud,
+        # but it's a warning, not a fault: amber
         if rec["drop_rising"]:
             badge = f"DROP {rec['drop']}"
             bf = T.font(13, bold=True)
             bw = d.textlength(badge, font=bf)
-            rrect(d, (w - 34 - bw, y + 13, w - 22, y + 37), 6, fill=th.bad)
-            d.text((w - 28 - bw, y + 16), badge, font=bf, fill=th.bg)
+            d.rectangle((w - 34 - bw, y + 13, w - 22, y + 37), fill=th.warn)
+            d.text((w - 28 - bw, y + 16), badge, font=bf, fill=th.ink)
 
     # ------------------------------------------------------------------ input
     def _in(self, key, x, y):

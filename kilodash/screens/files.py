@@ -11,6 +11,13 @@ Mount discipline: the stick mounts at devices.USB_MOUNT on entry and is
 sync'd + unmounted on Eject and on leaving the screen, so a yanked stick
 never strands a mount (lazy-detach fallback). Copies never delete the
 originals — captures/ stays authoritative until you clear it yourself.
+
+Presentation follows the ship-instrument look (Cobb's Semiotic Standard):
+a hard-edged USB-state banner with a per-state glyph — hazard caps and red
+on actual I/O faults only (mount failed, copy failed); ejected/read-only
+are stand-by/caution — terse caps EJECT/OFFLOAD controls, a segmented
+offload gauge (captures aboard the stick), and hard-edged capture rows
+keyed by a square status glyph (lit = aboard, hollow = not yet).
 """
 
 import os
@@ -20,7 +27,8 @@ import subprocess
 from PIL import Image, ImageDraw
 
 from .. import devices, system, theme as T
-from ..widgets import Button, rrect
+from ..widgets import (Button, hazard, seg_row, spaced, state_glyph,
+                       status_square)
 from .base import Screen, HEADER_H
 
 CAP_DIR = "/opt/kilodash/captures"
@@ -288,76 +296,118 @@ class FilesScreen(Screen):
         self._draw_list(d, th, w, h)
         d.rectangle((0, HEADER_H, w, LIST_TOP), fill=th.bg)
 
-        # stick card + Eject/Mount
-        rrect(d, (14, INFO_Y, w - 14, INFO_Y + INFO_H), 10, fill=th.card)
-        d.text((26, INFO_Y + 8), "USB stick", font=T.font(13), fill=th.muted)
+        # ---- USB state banner + EJECT/MOUNT. Red + hazard caps only for
+        #      actual I/O faults; ejected/read-only are stand-by/caution. ----
+        busy = self._busy()
+        fault = (self.status.startswith("Failed")
+                 or self.status == "mount failed")
+        if busy:
+            label, col, glyph = "TRANSFERRING", th.accent, "spin"
+        elif fault:
+            label, col, glyph = "FAULT", th.bad, "fault"
+        elif self.mounted and self.rw:
+            label, col, glyph = "USB READY", th.ok, "up"
+        elif self.mounted:
+            label, col, glyph = "READ-ONLY", th.warn, "standby"
+        else:
+            label, col, glyph = "STANDING BY", th.muted, "standby"
+        y0, y1 = INFO_Y, INFO_Y + INFO_H
+        d.rectangle((12, y0, w - 12, y1), fill=th.card, outline=col, width=2)
+        if fault:                        # faults wear the caution band
+            hazard(d, (14, y0 + 3, w - 14, y0 + 9), col, step=8, width=2)
+        state_glyph(d, glyph, 32, (y0 + y1) // 2, 11, col)
+        cx = (48 + w - 104) / 2          # centre of the glyph..button gap
+        f = T.font(14, bold=True, mono=True)
+        lw = d.textlength(label, font=f)
+        d.text((cx - lw / 2, y0 + 12), label, font=f, fill=col)
         if self.mounted:
             src, _ = _mount_state()
             free = self._free_space()
-            line = f"{os.path.basename(src or '?')} · " + \
-                ("read-only" if not self.rw
-                 else f"{_human(free)} free" if free is not None
-                 else "mounted")
-            col = th.ok if self.rw else th.warn
+            sub = os.path.basename(src or "?").upper()
+            if not self.rw:
+                sub += " · RO"
+            elif free is not None:
+                sub += f" · {_human(free)} FREE"
+        elif fault:
+            sub = self.status[:24].upper()
+        elif self.parts:
+            sub = "TAP MOUNT TO ATTACH"
         else:
-            line, col = "not mounted", th.warn
-        d.text((26, INFO_Y + 26), line, font=T.font(17, bold=True, mono=True),
-               fill=col)
+            sub = "NO USB STICK"
+        fs = T.font(9, bold=True, mono=True)
+        sw = d.textlength(sub, font=fs)
+        d.text((cx - sw / 2, y0 + 34), sub, font=fs, fill=th.muted)
+        # eject is a stand-down, not a fault: amber, never red
         ej = Button((w - 100, INFO_Y + 8, w - 22, INFO_Y + INFO_H - 8),
-                    "Eject" if self.mounted else "Mount",
-                    kind="danger" if self.mounted else "primary",
-                    font_size=16)
-        ej.enabled = bool(self.parts) and not self._busy()
+                    "EJECT" if self.mounted else "MOUNT",
+                    kind="primary", color=th.warn if self.mounted else None,
+                    font_size=15)
+        ej.enabled = bool(self.parts) and not busy
         ej.draw(d, th)
         self._btns["eject"] = ej.box if ej.enabled else None
 
-        # copy all
+        # offload all
         todo = [n for n, _ in self.files if n not in self.on_stick]
-        label = ("Copying…" if self._busy()
-                 else f"Copy all logs → USB ({len(todo)})" if todo
-                 else "All logs on stick ✓")
+        label = ("TRANSFERRING" if busy
+                 else f"OFFLOAD {len(todo)} → USB" if todo
+                 else "ALL LOGS ON STICK")
         all_btn = Button((14, ACT_Y, w - 14, ACT_Y + ACT_H), label,
-                         kind="primary", font_size=18)
-        all_btn.enabled = self.rw and bool(todo) and not self._busy()
+                         kind="primary", font_size=17)
+        all_btn.enabled = self.rw and bool(todo) and not busy
         all_btn.draw(d, th)
         self._btns["all"] = all_btn.box if all_btn.enabled else None
 
         # decode tables
         for key, x0, x1, label, ok in (
-                ("t_in", 14, w // 2 - 4, "Tables ← USB", self.mounted),
-                ("t_out", w // 2 + 4, w - 14, "Tables → USB", self.rw)):
-            b = Button((x0, TBL_Y, x1, TBL_Y + TBL_H), label, font_size=15)
-            b.enabled = ok and not self._busy()
+                ("t_in", 14, w // 2 - 4, "TABLES ← USB", self.mounted),
+                ("t_out", w // 2 + 4, w - 14, "TABLES → USB", self.rw)):
+            b = Button((x0, TBL_Y, x1, TBL_Y + TBL_H), label, font_size=14)
+            b.enabled = ok and not busy
             b.draw(d, th)
             self._btns[key] = b.box if b.enabled else None
 
-        rrect(d, (14, STAT_Y, w - 14, STAT_Y + STAT_H), 8, fill=th.card)
-        d.text((24, STAT_Y + 5), self.status[:38], font=T.font(13),
-               fill=th.muted)
+        # status strip + segmented offload gauge (captures aboard / total)
+        d.rectangle((14, STAT_Y, w - 14, STAT_Y + STAT_H), fill=th.card,
+                    outline=th.card_hi, width=1)
+        d.text((22, STAT_Y + 7), self.status[:30].upper(),
+               font=T.font(T.SUB, mono=True), fill=th.muted)
+        if self.files:
+            segs = 8
+            lit = round(segs * len(self.on_stick) / len(self.files))
+            if self.on_stick and lit == 0:
+                lit = 1
+            seg_row(d, w - 22 - segs * 10 + 2, STAT_Y + 8, lit, segs,
+                    th.ok, th.card_hi, seg_h=10)
 
     def _draw_list(self, d, th, w, h):
         pane_h = h - LIST_TOP
         if not self.files:
             self.content_h = pane_h
             d.rectangle((0, LIST_TOP, w, h), fill=th.bg)
-            d.text((24, LIST_TOP + 14), "captures/ is empty",
-                   font=T.font(13), fill=th.muted)
+            d.text((24, LIST_TOP + 12), spaced("NO CAPTURE LOGS"),
+                   font=T.font(11, bold=True, mono=True), fill=th.muted)
+            d.text((24, LIST_TOP + 32), "captures/ is empty",
+                   font=T.font(T.SUB, mono=True), fill=th.muted)
             return
         self.content_h = max(len(self.files) * ROW_H + 4, pane_h)
         surf = Image.new("RGB", (w, self.content_h), th.bg)
         sd = ImageDraw.Draw(surf)
         f = T.font(13, mono=True)
-        fs = T.font(12, mono=True)
+        fs = T.font(T.SUB, mono=True)
         for i, (name, size) in enumerate(self.files):
             y = i * ROW_H
             copied = name in self.on_stick
-            rrect(sd, (14, y + 2, w - 14, y + ROW_H - 2), 8,
-                  fill=th.card if not copied else th.card_hi)
-            sd.text((24, y + 7), name[:30], font=f,
-                    fill=th.fg if not copied else th.muted)
-            sub = _human(size) + ("  ✓ on stick" if copied
-                                  else "  tap to copy")
-            sd.text((24, y + 24), sub, font=fs,
+            sd.rectangle((14, y + 2, w - 14, y + ROW_H - 2),
+                         fill=th.card_hi if copied else th.card)
+            # square status glyph: lit = aboard the stick, hollow = not yet
+            status_square(sd, (24, y + 16, 36, y + 28),
+                          "lit" if copied else "hollow",
+                          th.ok if copied else th.muted)
+            sd.text((46, y + 6), name[:28], font=f,
+                    fill=th.muted if copied else th.fg)
+            sub = _human(size) + (" · ABOARD" if copied
+                                  else " · TAP TO OFFLOAD")
+            sd.text((46, y + 26), sub, font=fs,
                     fill=th.ok if copied else th.muted)
         self.paste_list(LIST_TOP, pane_h, surf)
 

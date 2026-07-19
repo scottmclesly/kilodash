@@ -14,7 +14,7 @@ Scottina's 12 V wiring.
 from PIL import Image, ImageDraw
 
 from .. import la, theme as T
-from ..widgets import Button, rrect
+from ..widgets import Button, brackets, spaced
 from .base import Screen, HEADER_H
 
 # Fixed vertical bands; all x-coordinates derive from app.w at draw time
@@ -125,8 +125,8 @@ class LogicScreen(Screen):
             x0 = 12 + i * (cw + gap)
             box = (x0, CHAN_Y, x0 + cw, CHAN_Y + CHIP_H)
             on = ch in self.enabled
-            rrect(d, box, 8, fill=th.accent if on else th.card,
-                  outline=th.card_hi, width=1)
+            d.rectangle(box, fill=th.accent if on else th.card,
+                        outline=th.card_hi, width=1)
             tw = d.textlength(ch, font=f)
             d.text((x0 + cw / 2 - tw / 2, CHAN_Y + 9), ch, font=f,
                    fill=th.ink if on else th.muted)
@@ -135,12 +135,13 @@ class LogicScreen(Screen):
     def _selector(self, d, th, box, label, key):
         """One ‹ value › cycle selector (serialmon pattern)."""
         x0, y0, x1, y1 = box
-        rrect(d, box, 9, fill=th.card)
+        d.rectangle(box, fill=th.card, outline=th.card_hi, width=1)
         d.text((x0 + 8, y0 + 5), "‹", font=T.font(22, bold=True),
                fill=th.accent)
         d.text((x1 - 18, y0 + 5), "›", font=T.font(22, bold=True),
                fill=th.accent)
-        f = T.font(13, bold=True)
+        f = T.font(13, bold=True, mono=True)
+        label = label.upper()
         tw = d.textlength(label, font=f)
         d.text(((x0 + x1) / 2 - tw / 2, y0 + (y1 - y0) / 2 - 8), label,
                font=f, fill=th.fg)
@@ -166,21 +167,25 @@ class LogicScreen(Screen):
         self._selector(d, th, (mid + 3, TRIG_Y, w - 12, TRIG_Y + SEL_H),
                        la.DECODER_PRESETS[self.preset_idx]["label"], "dec")
         running = self._running()
+        # stopping a one-shot capture is a stand-down (amber), not a fault
         self.run_btn = Button((12, RUN_Y, w - 12, RUN_Y + RUN_H),
-                              "Stop" if running else "Run capture",
-                              kind="danger" if running else "primary",
+                              "STOP" if running else "RUN CAPTURE",
+                              kind="primary",
+                              color=th.warn if running else None,
                               font_size=20)
         self.run_btn.draw(d, th)
 
     def _draw_status(self, d, th, w):
-        rrect(d, (12, STAT_Y, w - 12, STAT_Y + STAT_H), 8, fill=th.card)
+        d.rectangle((12, STAT_Y, w - 12, STAT_Y + STAT_H), fill=th.card,
+                    outline=th.card_hi, width=1)
         if self.job:
             status = self.job.status
         else:
-            status = (f"{len(self.enabled)}ch · "
+            status = (f"{len(self.enabled)}CH · "
                       f"{_rate_name(la.SAMPLERATES[self.rate_idx])} · "
-                      f"{la.SAMPLE_LABELS[self.samp_idx]} — tap Run")
-        d.text((22, STAT_Y + 5), status[:38], font=T.font(13), fill=th.muted)
+                      f"{la.SAMPLE_LABELS[self.samp_idx]} — TAP RUN")
+        d.text((22, STAT_Y + 6), status[:38].upper(),
+               font=T.font(12, bold=True, mono=True), fill=th.muted)
 
     def _draw_output(self, d, th, w, h):
         pane_h = h - OUT_TOP

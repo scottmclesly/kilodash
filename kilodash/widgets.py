@@ -7,6 +7,111 @@ from . import theme as T
 MIN_TOUCH = 44          # never draw a tappable target smaller than this
 
 
+# ---- Semiotic-Standard instrument idioms (shared across screens) ----
+
+def spaced(s):
+    """Spaced-caps instrument readout: "RUNNING" -> "R U N N I N G"."""
+    return " ".join(s)
+
+
+def hazard(d, box, col, step=9, width=3):
+    """45° caution striping kept strictly inside `box` (PIL has no clipping,
+    so only full-height strokes are drawn; partial edge stripes are dropped)."""
+    x0, y0, x1, y1 = box
+    h = y1 - y0
+    x = x0
+    while x + h <= x1:
+        d.line((x, y1, x + h, y0), fill=col, width=width)
+        x += step
+
+
+def brackets(d, box, col, arm=14, width=2):
+    """Corner registration brackets framing an instrument area."""
+    x0, y0, x1, y1 = box
+    for x, sx in ((x0, 1), (x1, -1)):
+        for y, sy in ((y0, 1), (y1, -1)):
+            d.line((x, y, x + sx * arm, y), fill=col, width=width)
+            d.line((x, y, x, y + sy * arm), fill=col, width=width)
+
+
+def state_glyph(d, key, cx, cy, r, c):
+    """Banner-sized Semiotic-Standard service-state marks (ringed):
+    up (core lit) / spin (spin-up sector) / fault (exclamation) /
+    standby (level bar). Kin to the Pomodoro phase glyphs."""
+    lw = max(2, round(r / 5))
+    d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=c, width=lw)
+    if key == "up":         # power core lit
+        s = r * 0.5
+        d.ellipse((cx - s, cy - s, cx + s, cy + s), fill=c)
+    elif key == "spin":     # spin-up sector
+        s = r * 0.68
+        d.pieslice((cx - s, cy - s, cx + s, cy + s), 270, 60, fill=c)
+    elif key == "fault":    # exclamation mark
+        d.rectangle((cx - lw / 2, cy - r * 0.55, cx + lw / 2, cy + r * 0.1),
+                    fill=c)
+        d.rectangle((cx - lw / 2, cy + r * 0.32, cx + lw / 2, cy + r * 0.55),
+                    fill=c)
+    else:                   # standby: level bar
+        d.rectangle((cx - r * 0.5, cy - lw / 2, cx + r * 0.5, cy + lw / 2),
+                    fill=c)
+
+
+def status_square(d, box, mode, col, width=2):
+    """Square row-status glyph for inventory/list rows:
+    'lit' = active, 'hollow' = inactive, 'slash' = degraded/unverified
+    (draw slashes in caution amber; red stays reserved for faults)."""
+    if mode == "lit":
+        d.rectangle(box, fill=col)
+    else:
+        d.rectangle(box, outline=col, width=width)
+        if mode == "slash":
+            d.line((box[0], box[3], box[2], box[1]), fill=col, width=width)
+
+
+def seg_row(d, x, y, lit, total, col, off_col,
+            seg_w=8, seg_h=11, gap=2):
+    """Horizontal segmented gauge: `lit` of `total` cells filled left to
+    right; unlit cells stay as hollow outlines (extinguished, not absent)."""
+    for i in range(total):
+        box = (x + i * (seg_w + gap), y, x + i * (seg_w + gap) + seg_w,
+               y + seg_h)
+        if i < lit:
+            d.rectangle(box, fill=col)
+        else:
+            d.rectangle(box, outline=off_col, width=1)
+
+
+def confirm_dialog(d, th, w, title, body, buttons):
+    """Modal stand-down prompt: hazard-capped amber frame, spaced-caps title,
+    centred body lines, and a two-button footer. Laid out top-down from one
+    geometry so the body can never grow into the buttons — pass `body` as a
+    list of short lines. Returns the two button boxes, left to right.
+
+    `buttons` is ((left_label, left_colour_key), (right_label, right_colour)).
+    """
+    x0, y0, x1, y1 = 26, 150, w - 26, 310
+    d.rectangle((x0 - 3, y0 - 3, x1 + 3, y1 + 3), fill=th.bg)
+    d.rectangle((x0, y0, x1, y1), fill=th.card, outline=th.warn, width=2)
+    hazard(d, (x0 + 2, y0 + 2, x1 - 2, y0 + 16), th.warn)
+
+    f = T.font(16, bold=True, mono=True)
+    tw = d.textlength(title, font=f)
+    d.text(((w - tw) / 2, y0 + 26), title, font=f, fill=th.warn)
+
+    fb = T.font(T.SUB, bold=True, mono=True)
+    for i, line in enumerate(body):
+        bw = d.textlength(line, font=fb)
+        d.text(((w - bw) / 2, y0 + 56 + i * 16), line, font=fb, fill=th.muted)
+
+    by = y1 - 58                      # 44px targets, 14px below the frame
+    mid = w // 2
+    left_box = (x0 + 12, by, mid - 6, by + 44)
+    right_box = (mid + 6, by, x1 - 12, by + 44)
+    for box, (label, col) in ((left_box, buttons[0]), (right_box, buttons[1])):
+        Button(box, label, color=col, font_size=15).draw(d, th)
+    return left_box, right_box
+
+
 def rrect(draw, box, radius, fill=None, outline=None, width=1):
     draw.rounded_rectangle(box, radius=radius, fill=fill,
                            outline=outline, width=width)

@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 
 from .. import __version__
 from .. import theme as T
-from ..widgets import rrect
+from ..widgets import spaced, status_square
 from .base import Screen, HEADER_H
 
 MARGIN = 8        # left edge of the tile column
@@ -116,8 +116,8 @@ class SettingsScreen(Screen):
         hits_surf = []           # (x0,y0,x1,y1,cb) in surface space
         y = 4
         for title, caption, tiles in sections:
-            sd.text((MARGIN + 6, y + 6), title.upper(),
-                    font=T.font(13, bold=True), fill=th.muted)
+            sd.text((MARGIN + 6, y + 8), spaced(title.upper()),
+                    font=T.font(10, bold=True, mono=True), fill=th.muted)
             y += HEAD_H
             if caption:
                 sd.text((MARGIN + 6, y - 4), caption, font=T.font(11),
@@ -131,12 +131,13 @@ class SettingsScreen(Screen):
                 y += TILE_H + GAP
 
         # About card (spans the tile column, also clear of the scroller)
-        sd.text((MARGIN + 6, y + 6), "ABOUT", font=T.font(13, bold=True),
-                fill=th.muted)
+        sd.text((MARGIN + 6, y + 8), spaced("ABOUT"),
+                font=T.font(10, bold=True, mono=True), fill=th.muted)
         y += HEAD_H
-        rrect(sd, (MARGIN, y, col_w, y + about_h - 6), 10, fill=th.card)
-        sd.text((MARGIN + 12, y + 12), f"Scottina v{__version__}",
-                font=T.font(18, bold=True), fill=th.accent)
+        sd.rectangle((MARGIN, y, col_w, y + about_h - 6), fill=th.card,
+                     outline=th.card_hi, width=1)
+        sd.text((MARGIN + 12, y + 12), f"SCOTTINA v{__version__}",
+                font=T.font(15, bold=True, mono=True), fill=th.accent)
         ty = y + 12 + 26
         for ln in body:
             sd.text((MARGIN + 12, ty), ln, font=T.font(13), fill=th.fg)
@@ -155,41 +156,45 @@ class SettingsScreen(Screen):
 
     def _draw_tile(self, sd, th, x, y, tw, tile, hits):
         kind, a, b = tile
-        rrect(sd, (x, y, x + tw, y + TILE_H), 10, fill=th.card)
+        sd.rectangle((x, y, x + tw, y + TILE_H), fill=th.card,
+                     outline=th.card_hi, width=1)
         if kind == "action":
-            col = th.bad if a in ("Reboot Pi", "Shutdown") else th.accent
-            f = T.font(16, bold=True)
-            lw = sd.textlength(a, font=f)
-            sd.text((x + (tw - lw) / 2, y + TILE_H / 2 - 10), a, font=f,
+            # power actions are stand-downs, not faults: amber, never red
+            col = th.warn if a in ("Reboot Pi", "Shutdown") else th.accent
+            f = T.font(13, bold=True, mono=True)
+            lab = a.upper()
+            lw = sd.textlength(lab, font=f)
+            sd.text((x + (tw - lw) / 2, y + TILE_H / 2 - 8), lab, font=f,
                     fill=col)
             hits.append((x, y, x + tw, y + TILE_H, b))
             return
         key, spec = a, b
-        lf = T.font(13, bold=True)
-        for i, ln in enumerate(self._wrap(sd, spec["label"], lf, tw - 16)[:2]):
-            sd.text((x + 8, y + 7 + i * 15), ln, font=lf, fill=th.fg)
+        lf = T.font(10, bold=True, mono=True)
+        label = spec["label"].upper()
+        for i, ln in enumerate(self._wrap(sd, label, lf, tw - 16)[:2]):
+            sd.text((x + 8, y + 8 + i * 14), ln, font=lf, fill=th.fg)
         cy = y + TILE_H - 38                      # control zone top
         t = spec["type"]
         if t == "bool":
-            self._draw_toggle(sd, th, x + (tw - 64) // 2, cy + 2, spec["value"])
+            self._draw_toggle(sd, th, x, cy + 6, tw, spec["value"])
             hits.append((x, y, x + tw, y + TILE_H,
                          lambda k=key, s=spec: self._toggle(k, s)))
         elif t == "choice":
-            val = str(spec["value"])
-            f = T.font(14, bold=True)
+            val = str(spec["value"]).upper()
+            f = T.font(12, bold=True, mono=True)
             vw = sd.textlength(val, font=f)
             bx0 = x + (tw - vw - 20) / 2
-            rrect(sd, (bx0, cy, bx0 + vw + 20, cy + 30), 8, fill=th.card_hi)
-            sd.text((bx0 + 10, cy + 6), val, font=f, fill=th.accent)
+            sd.rectangle((bx0, cy, bx0 + vw + 20, cy + 30), fill=th.card_hi)
+            sd.text((bx0 + 10, cy + 8), val, font=f, fill=th.accent)
             hits.append((x, y, x + tw, y + TILE_H,
                          lambda k=key, s=spec: self._cycle_choice(k, s)))
         elif t == "int":
             self._stepper_box(sd, th, x + 6, cy, "-")
             self._stepper_box(sd, th, x + tw - 36, cy, "+")
             val = f"{spec['value']}{spec.get('unit', '')}"
-            f = T.font(13, bold=True)
+            f = T.font(12, bold=True, mono=True)
             vw = sd.textlength(val, font=f)
-            sd.text((x + tw / 2 - vw / 2, cy + 8), val, font=f, fill=th.fg)
+            sd.text((x + tw / 2 - vw / 2, cy + 9), val, font=f, fill=th.fg)
             # each half of the tile is one big step target
             hits.append((x, y, x + tw // 2, y + TILE_H,
                          lambda k=key, s=spec: self._step(k, s, -1)))
@@ -209,19 +214,24 @@ class SettingsScreen(Screen):
             lines.append(cur)
         return lines
 
-    def _draw_toggle(self, d, th, x, y, on):
-        w_, h_ = 64, 30
-        # "on" uses the theme accent (not status-green) so it matches each skin
-        rrect(d, (x, y, x + w_, y + h_), 15, fill=th.accent if on else th.card_hi)
-        kx = x + w_ - 27 if on else x + 3
-        # dark knob on the bright "on" track, light knob on the dark "off" track
-        d.ellipse((kx, y + 3, kx + 24, y + 27), fill=th.ink if on else th.fg)
+    def _draw_toggle(self, d, th, x, y, tw, on):
+        # status-square selected-state idiom: lit = on, hollow = off
+        # ("on" uses the theme accent, not status-green, to match each skin)
+        col = th.accent if on else th.muted
+        f = T.font(12, bold=True, mono=True)
+        lab = spaced("ON") if on else spaced("OFF")
+        lw = d.textlength(lab, font=f)
+        sq = 14
+        bx = x + (tw - sq - 8 - lw) / 2
+        status_square(d, (bx, y, bx + sq, y + sq), "lit" if on else "hollow",
+                      col)
+        d.text((bx + sq + 8, y), lab, font=f, fill=col)
 
     def _stepper_box(self, d, th, x, y, sym):
-        rrect(d, (x, y, x + 30, y + 30), 8, fill=th.card_hi)
-        f = T.font(20, bold=True)
+        d.rectangle((x, y, x + 30, y + 30), fill=th.card_hi)
+        f = T.font(20, bold=True, mono=True)
         tw = d.textlength(sym, font=f)
-        d.text((x + 15 - tw / 2, y + 3), sym, font=f, fill=th.accent)
+        d.text((x + 15 - tw / 2, y + 2), sym, font=f, fill=th.accent)
 
     def handle_tap(self, x, y):
         for x0, y0, x1, y1, cb in self._hits:

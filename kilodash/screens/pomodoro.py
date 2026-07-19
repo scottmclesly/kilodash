@@ -25,7 +25,7 @@ import time
 from PIL import ImageDraw
 
 from .. import theme as T
-from ..widgets import Button
+from ..widgets import Button, brackets, hazard, spaced
 from .base import Screen, HEADER_H
 
 LONG_EVERY = 4
@@ -45,21 +45,6 @@ SEGS = 48
 FRAME = (26, 100, None, 324)                   # bracket frame; x1 filled at draw
 DOTS_Y = 344
 RING_BAND = (96, 330)                          # dirty band for seconds-only ticks
-
-
-def _spaced(s):
-    return " ".join(s)
-
-
-def _hazard(d, box, col, step=9, width=3):
-    """45° caution striping kept strictly inside `box` (PIL has no clipping,
-    so only full-height strokes are drawn; partial edge stripes are dropped)."""
-    x0, y0, x1, y1 = box
-    h = y1 - y0
-    x = x0
-    while x + h <= x1:
-        d.line((x, y1, x + h, y0), fill=col, width=width)
-        x += step
 
 
 def _phase_glyph(d, key, cx, cy, r, c, t=None):
@@ -180,11 +165,7 @@ class PomodoroScreen(Screen):
             d = ImageDraw.Draw(img)
             col = getattr(th, ph["col"])
             d.rectangle((0, 0, w, h), fill=th.bg)
-            # corner registration brackets
-            for x, sx in ((16, 1), (w - 16, -1)):
-                for y, sy in ((16, 1), (h - 16, -1)):
-                    d.line((x, y, x + sx * 18, y), fill=th.muted, width=2)
-                    d.line((x, y, x, y + sy * 18), fill=th.muted, width=2)
+            brackets(d, (16, 16, w - 16, h - 16), th.muted, arm=18)
             # top/bottom bands: caution stripes crawl on rest, rules on work
             for y0, y1 in ((52, 72), (h - 72, h - 52)):
                 if ph["col"] == "warn":
@@ -210,7 +191,7 @@ class PomodoroScreen(Screen):
             f = T.font(22, bold=True, mono=True)
             lw = d.textlength(ph["label"], font=f)
             d.text(((w - lw) / 2, cy + 126), ph["label"], font=f, fill=col)
-            sub = _spaced(ph["verb"])
+            sub = spaced(ph["verb"])
             f_s = T.font(12, bold=True, mono=True)
             sw = d.textlength(sub, font=f_s)
             d.text(((w - sw) / 2, cy + 160), sub, font=f_s, fill=th.fg)
@@ -277,7 +258,7 @@ class PomodoroScreen(Screen):
         d.rectangle((12, y0, w - 12, y1), fill=th.card, outline=col, width=2)
         if ph["col"] == "warn":       # rest phases wear caution end-caps
             for zx in (50, w - 16 - 46):    # left cap clears the phase glyph
-                _hazard(d, (zx, y0 + 4, zx + 46, y1 - 4), col)
+                hazard(d, (zx, y0 + 4, zx + 46, y1 - 4), col)
         _phase_glyph(d, ph["glyph"], 34, (y0 + y1) // 2, 11, col)
         f = T.font(17, bold=True, mono=True)
         lab = ph["label"]
@@ -289,13 +270,7 @@ class PomodoroScreen(Screen):
         w = self.app.w
         cx, cy = w // 2, RING_CY
 
-        # corner registration brackets
-        fx0, fy0, fx1, fy1 = FRAME[0], FRAME[1], w - FRAME[0], FRAME[3]
-        bl = 14
-        for x, sx in ((fx0, 1), (fx1, -1)):
-            for y, sy in ((fy0, 1), (fy1, -1)):
-                d.line((x, y, x + sx * bl, y), fill=th.muted, width=2)
-                d.line((x, y, x, y + sy * bl), fill=th.muted, width=2)
+        brackets(d, (FRAME[0], FRAME[1], w - FRAME[0], FRAME[3]), th.muted)
 
         # 48-segment chronometer: lit segments = time left, extinguishing
         # clockwise-backwards toward 12 o'clock as the phase burns down
@@ -320,7 +295,7 @@ class PomodoroScreen(Screen):
         sub = "HOLD" if not self.running else \
               ("COMPLETE" if remaining <= 0 else "RUNNING")
         f_s = T.font(11, bold=True, mono=True)
-        sub = _spaced(sub)
+        sub = spaced(sub)
         sw = d.textlength(sub, font=f_s)
         d.text((cx - sw / 2, cy + 24), sub, font=f_s,
                fill=th.muted if self.running else col)

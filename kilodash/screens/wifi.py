@@ -5,18 +5,18 @@ prompt for a password via the on-screen keyboard.
 from PIL import Image, ImageDraw
 
 from .. import system, theme as T
-from ..widgets import Button, Keyboard, rrect
+from ..widgets import Button, Keyboard, seg_row, spaced, status_square
 from .base import Screen, HEADER_H
 
 ROW_H = 58
 
 
-def _signal_bars(d, th, x, y, signal):
-    heights = [6, 11, 16, 21]
+def _signal_gauge(d, th, x, y, signal):
+    """Small segmented signal gauge: weak = amber (degraded, never red)."""
     level = 0 if signal < 20 else 1 if signal < 45 else 2 if signal < 70 else 3
-    for i, hgt in enumerate(heights):
-        col = th.ok if i <= level else th.card_hi
-        d.rectangle((x + i * 7, y + (21 - hgt), x + i * 7 + 5, y + 21), fill=col)
+    col = th.ok if level >= 2 else th.warn
+    seg_row(d, x, y, level + 1 if signal else 0, 4, col, th.card_hi,
+            seg_w=7, seg_h=11, gap=2)
 
 
 class WifiScreen(Screen):
@@ -84,20 +84,23 @@ class WifiScreen(Screen):
         for i, n in enumerate(self.nets):
             y = i * ROW_H
             hi = n["in_use"]
-            rrect(sd, (14, y, w - 14, y + ROW_H - 6), 10,
-                  fill=th.card_hi if hi else th.card)
-            _signal_bars(sd, th, 24, y + 12, n["signal"])
-            ssid = n["ssid"][:20]
-            sd.text((66, y + 8), ssid, font=T.font(18, bold=True), fill=th.fg)
-            secured = n["security"] and n["security"].lower() != "open"
-            sub = f"ch{n['chan']}  {n['security'] or 'open'}"
-            sd.text((66, y + 31), sub, font=T.font(13), fill=th.muted)
+            sd.rectangle((14, y, w - 14, y + ROW_H - 6),
+                         fill=th.card_hi if hi else th.card,
+                         outline=th.card_hi, width=1)
+            _signal_gauge(sd, th, 24, y + 20, n["signal"])
+            ssid = n["ssid"][:18].upper()
+            sd.text((66, y + 8), ssid, font=T.font(14, bold=True, mono=True),
+                    fill=th.fg)
+            sub = f"CH {n['chan']} · {(n['security'] or 'OPEN').upper()}"[:24]
+            sd.text((66, y + 29), sub, font=T.font(T.SUB, mono=True),
+                    fill=th.muted)
             if n["ssid"] in self.known:
-                sd.text((w - 90, y + 12), "saved", font=T.font(13), fill=th.accent)
-            if hi:
-                sd.text((w - 40, y + 12), "✓", font=T.font(22, bold=True), fill=th.ok)
-            elif secured:
-                sd.text((w - 36, y + 14), "🔒", font=T.font(18), fill=th.muted)
+                sd.text((w - 94, y + 12), spaced("SAVED"),
+                        font=T.font(9, bold=True, mono=True), fill=th.accent)
+            # square link-status glyph: lit = connected, hollow = not
+            status_square(sd, (w - 38, y + 12, w - 26, y + 24),
+                          "lit" if hi else "hollow",
+                          th.ok if hi else th.muted)
             # record absolute (screen-space) hit rect
             self._rows.append((y, n))
         self.paste_list(top, h - top, surf)
@@ -105,14 +108,16 @@ class WifiScreen(Screen):
         # header controls
         d.rectangle((0, HEADER_H, w, top), fill=th.bg)
         bar_y = HEADER_H + 4
+        # radio off is a stand-down, not a fault: amber, never red
         self.toggle_btn = Button((14, bar_y, 150, bar_y + 40),
-                                 "Wi-Fi ON" if self.enabled else "Wi-Fi OFF",
-                                 kind="primary" if self.enabled else "danger",
+                                 "WIFI ON" if self.enabled else "WIFI OFF",
+                                 kind="primary" if self.enabled else "normal",
+                                 color=None if self.enabled else th.warn,
                                  font_size=16)
         self.toggle_btn.draw(d, th)
         scanning = self.scan_task is not None
         self.scan_btn = Button((w - 108, bar_y, w - 14, bar_y + 40),
-                               "…" if scanning else "Rescan",
+                               "…" if scanning else "RESCAN",
                                kind="normal", font_size=16)
         self.scan_btn.enabled = self.enabled and not scanning
         self.scan_btn.draw(d, th)

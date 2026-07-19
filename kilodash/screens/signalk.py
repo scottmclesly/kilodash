@@ -19,7 +19,7 @@ import time
 from datetime import datetime
 
 from .. import theme as T, webapp
-from ..widgets import rrect
+from ..widgets import spaced, status_square
 from .webapp_base import WebAppScreen
 
 SELF_URL = "http://127.0.0.1:3000/signalk/v1/api/vessels/self"
@@ -209,19 +209,23 @@ class SignalKScreen(WebAppScreen):
         w = self.app.w
         panel_top = top
         if self.web.state != webapp.UP:
-            d.text((16, top + 20), "Waiting for Signal K…",
-                   font=T.font(14), fill=th.muted)
+            d.text((16, top + 20), spaced("AWAITING SIGNAL K"),
+                   font=T.font(12, bold=True, mono=True), fill=th.muted)
             return
 
         page = self.page % len(PAGES)
         group, metrics = PAGES[page]
-        d.text((14, top), group, font=T.font(14, bold=True), fill=th.accent)
-        # page dots
+        d.text((14, top), spaced(group), font=T.font(12, bold=True, mono=True),
+               fill=th.accent)
+        # page pips: lit square = this page, hollow = the others
         dx = w - 12 - len(PAGES) * 14
         for i in range(len(PAGES)):
             cx = dx + i * 14
-            d.ellipse((cx, top + 4, cx + 7, top + 11),
-                      fill=th.accent if i == page else th.card_hi)
+            box = (cx, top + 3, cx + 8, top + 11)
+            if i == page:
+                d.rectangle(box, fill=th.accent)
+            else:
+                d.rectangle(box, outline=th.card_hi, width=1)
         top += 24
 
         # heartbeat stays pinned to the bottom edge; the 3x2 vitals grid
@@ -235,14 +239,15 @@ class SignalKScreen(WebAppScreen):
             r, c = divmod(i, 2)
             x0 = 12 + c * (cw + gap)
             y0 = top + r * (ch + gap)
-            rrect(d, (x0, y0, x0 + cw, y0 + ch), 10, fill=th.card)
-            d.text((x0 + 10, y0 + 8), label, font=T.font(11, bold=True),
-                   fill=th.muted)
+            d.rectangle((x0, y0, x0 + cw, y0 + ch), fill=th.card,
+                        outline=th.card_hi, width=1)
+            d.text((x0 + 10, y0 + 8), spaced(label),
+                   font=T.font(9, bold=True, mono=True), fill=th.muted)
             val, unit2 = self._display(path, conv, unit, dec)
             d.text((x0 + 10, y0 + 25), val,
                    font=T.font(26, bold=True, mono=True), fill=th.fg)
-            d.text((x0 + 10, y0 + ch - 18), unit2, font=T.font(11),
-                   fill=th.muted)
+            d.text((x0 + 10, y0 + ch - 18), unit2.upper(),
+                   font=T.font(T.SUB, mono=True), fill=th.muted)
 
         self._draw_heartbeat(d, th, hb_y, w)
         # row bands for the partial-blit path (full width, small padding)
@@ -261,15 +266,21 @@ class SignalKScreen(WebAppScreen):
                     ages.append(a)
                 if leaf.get("$source"):
                     srcs.add(leaf["$source"])
-        rrect(d, (12, y, w - 12, y + 26), 7, fill=th.card)
+        # hard-edged heartbeat cell: lit square = fresh, slashed amber =
+        # going stale, red = flow lost (that IS the fault this line watches for)
+        d.rectangle((12, y, w - 12, y + 26), fill=th.card,
+                    outline=th.card_hi, width=1)
         if ages:
             fresh = min(ages)
             col = th.ok if fresh < 3 else th.warn if fresh < 15 else th.bad
-            txt = f"{len(srcs)} feed{'s' if len(srcs) != 1 else ''} · {fresh:.1f}s ago"
+            mode = "lit" if fresh < 3 else "slash" if fresh < 15 else "lit"
+            n = len(srcs)
+            txt = f"{n} FEED{'S' if n != 1 else ''} · {fresh:.1f}s AGO"
         else:
-            col, txt = th.bad, "no data flowing"
-        d.ellipse((22, y + 8, 33, y + 19), fill=col)
-        d.text((44, y + 6), txt, font=T.font(13, bold=True), fill=th.fg)
+            col, mode, txt = th.bad, "lit", spaced("NO DATA FLOWING")
+        status_square(d, (22, y + 8, 33, y + 19), mode, col)
+        d.text((44, y + 6), txt, font=T.font(12, bold=True, mono=True),
+               fill=th.fg)
 
     def handle_app_tap(self, x, y):
         self.page = (self.page + 1) % len(PAGES)

@@ -16,7 +16,7 @@ import time
 from PIL import Image, ImageDraw
 
 from .. import system, theme as T
-from ..widgets import Button, rrect
+from ..widgets import Button, brackets, spaced, status_square
 from .base import Screen, HEADER_H
 
 CAP_DIR = "/opt/kilodash/captures"
@@ -194,8 +194,9 @@ class SdrScreen(Screen):
     def _draw_spectrum(self, d, th, box):
         x0, y0, x1, y1 = box
         if not self.pts:
-            d.text((x0 + 12, (y0 + y1) / 2 - 8), "tap Scan for spectrum",
-                   font=T.font(14), fill=th.muted)
+            msg = spaced("SCAN FOR SPECTRUM")
+            f = T.font(12, bold=True, mono=True)
+            d.text((x0 + 12, (y0 + y1) / 2 - 8), msg, font=f, fill=th.muted)
             return
         w = int(x1 - x0 - 12)
         dbs = [p[1] for p in self.pts]
@@ -216,16 +217,17 @@ class SdrScreen(Screen):
     def _draw_decode(self, d, th, box):
         x0, y0, x1, y1 = box
         if not self.events:
-            b = BANDS[self.band]
-            msg = ("listening…" if self.id_task else "tap Identify to decode")
-            d.text((x0 + 12, y0 + 10), msg, font=T.font(14), fill=th.muted)
+            msg = spaced("LISTENING" if self.id_task else "IDENTIFY TO DECODE")
+            d.text((x0 + 12, y0 + 10), msg,
+                   font=T.font(12, bold=True, mono=True), fill=th.muted)
             return
         yy = y0 + 8
         for model, info in self.events[:6]:
-            d.ellipse((x0 + 10, yy + 5, x0 + 18, yy + 13), fill=th.ok)
-            d.text((x0 + 26, yy), model[:26], font=T.font(15, bold=True), fill=th.fg)
+            status_square(d, (x0 + 10, yy + 4, x0 + 20, yy + 14), "lit", th.ok)
+            d.text((x0 + 28, yy), model[:24].upper(),
+                   font=T.font(14, bold=True, mono=True), fill=th.fg)
             if info:
-                d.text((x0 + 26, yy + 18), info[:30], font=T.font(12, mono=True),
+                d.text((x0 + 28, yy + 18), info[:30], font=T.font(11, mono=True),
                        fill=th.muted)
             yy += 40
 
@@ -235,39 +237,47 @@ class SdrScreen(Screen):
         self._btns = {}
         y = HEADER_H + 6
 
-        # band selector
-        rrect(d, (14, y, w - 14, y + 42), 10, fill=th.card)
+        # band selector — hard-edged grouping card
+        d.rectangle((14, y, w - 14, y + 42), fill=th.card, outline=th.card_hi,
+                    width=1)
         self._btns["prev"] = (14, y, 56, y + 42)
         self._btns["next"] = (w - 56, y, w - 14, y + 42)
         d.text((26, y + 8), "‹", font=T.font(28, bold=True), fill=th.accent)
         d.text((w - 42, y + 8), "›", font=T.font(28, bold=True), fill=th.accent)
-        bf = T.font(19, bold=True)
-        d.text((w / 2 - d.textlength(b["label"], font=bf) / 2, y + 9), b["label"],
-               font=bf, fill=th.fg)
+        bf = T.font(19, bold=True, mono=True)
+        d.text((w / 2 - d.textlength(b["label"].upper(), font=bf) / 2, y + 9),
+               b["label"].upper(), font=bf, fill=th.fg)
         y += 46
 
         # band knowledge hint
-        d.text((16, y), "likely: " + b["hint"], font=T.font(11), fill=th.muted)
+        d.text((16, y), ("LIKELY: " + b["hint"])[:45],
+               font=T.font(T.SUB, mono=True), fill=th.muted)
         y += 18
 
-        # results area (spectrum or decode)
+        # results area (spectrum or decode) — the bracket-framed instrument
         area = (14, y, w - 14, y + 172)
-        rrect(d, area, 8, fill=th.card)
+        brackets(d, area, th.muted)
+        cap_lbl = spaced("DECODE" if self.mode == "decode" else "SPECTRUM")
+        d.text((area[0] + 10, y + 4), cap_lbl,
+               font=T.font(10, bold=True, mono=True), fill=th.muted)
+        inner = (area[0], y + 20, area[2], area[3])
         if self.mode == "decode":
-            self._draw_decode(d, th, area)
+            self._draw_decode(d, th, inner)
         else:
-            self._draw_spectrum(d, th, area)
+            self._draw_spectrum(d, th, inner)
         y += 180
 
         # status line
-        rrect(d, (14, y, w - 14, y + 34), 8, fill=th.card)
-        d.text((24, y + 9), self.status[:38], font=T.font(13), fill=th.muted)
+        d.rectangle((14, y, w - 14, y + 34), fill=th.card, outline=th.card_hi,
+                    width=1)
+        d.text((24, y + 10), self.status[:38].upper(),
+               font=T.font(12, bold=True, mono=True), fill=th.muted)
         y += 42
 
-        # actions: [Scan] [Identify]  then  [Capture]
+        # actions: [SCAN] [IDENTIFY]  then  [CAPTURE]
         bw = (w - 28 - 10) / 2
-        scan = Button((14, y, 14 + bw, y + 46), "Scan", kind="primary", font_size=18)
-        idb = Button((w - 14 - bw, y, w - 14, y + 46), "Identify",
+        scan = Button((14, y, 14 + bw, y + 46), "SCAN", kind="primary", font_size=18)
+        idb = Button((w - 14 - bw, y, w - 14, y + 46), "IDENTIFY",
                      kind="normal", font_size=18)
         idb.enabled = b["dec"] is not None and not self._busy()
         scan.enabled = not self._busy()
@@ -276,7 +286,7 @@ class SdrScreen(Screen):
         self._btns["scan"] = scan.box if scan.enabled else None
         self._btns["identify"] = idb.box if idb.enabled else None
         y += 52
-        cap = Button((14, y, w - 14, y + 42), "Capture IQ", kind="ghost",
+        cap = Button((14, y, w - 14, y + 42), "CAPTURE IQ", kind="ghost",
                      font_size=17)
         cap.enabled = not self._busy()
         cap.draw(d, th)

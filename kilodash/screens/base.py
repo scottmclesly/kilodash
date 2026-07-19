@@ -101,23 +101,29 @@ class Screen:
         self._img.paste(crop, (0, top))
 
     def _draw_header(self, d, th):
+        # ship-instrument chrome: hard-edged strip, caps-mono readouts,
+        # hairline rule separating chrome from the instrument area below
         w = self.app.w
         d.rectangle((0, 0, w, HEADER_H), fill=th.card)
+        d.rectangle((0, HEADER_H - 2, w, HEADER_H), fill=th.card_hi)
         if self.app.is_launcher(self) or getattr(self, "capture_all_taps", False):
-            d.text((14, 11), self.title, font=T.font(22, bold=True), fill=th.fg)
+            d.text((14, 11), self.title.upper(),
+                   font=T.font(20, bold=True, mono=True), fill=th.fg)
         else:
             # Back button (hit-box lives in app.BACK_HIT)
             d.text((10, 6), "‹", font=T.font(32, bold=True), fill=th.accent)
-            d.text((32, 13), "Back", font=T.font(17, bold=True), fill=th.accent)
-            f = T.font(19, bold=True)
-            tw = d.textlength(self.title, font=f)
-            d.text((w - tw - 14, 13), self.title, font=f, fill=th.fg)
+            d.text((32, 15), "BACK", font=T.font(14, bold=True, mono=True),
+                   fill=th.accent)
+            f = T.font(16, bold=True, mono=True)
+            title = self.title.upper()
+            tw = d.textlength(title, font=f)
+            d.text((w - tw - 14, 14), title, font=f, fill=th.fg)
             return
         if self.app.config["show_clock"]:
             clk = time.strftime("%H:%M")
-            f = T.font(18, bold=True)
+            f = T.font(16, bold=True, mono=True)
             tw = d.textlength(clk, font=f)
-            d.text((w - tw - 14, 13), clk, font=f, fill=th.muted)
+            d.text((w - tw - 14, 14), clk, font=f, fill=th.muted)
 
     def draw_content(self, d, th):
         raise NotImplementedError

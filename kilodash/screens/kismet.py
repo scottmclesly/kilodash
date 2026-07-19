@@ -20,7 +20,7 @@ import threading
 import time
 
 from .. import theme as T, webapp
-from ..widgets import Button, rrect
+from ..widgets import Button, spaced, status_square
 from .webapp_base import WebAppScreen
 from .wifisniff import _wifi_ifaces, _default_iface, _connected
 
@@ -72,7 +72,7 @@ class KismetScreen(WebAppScreen):
         super().__init__(app)
         self.sniffing = False
         self.peers = []
-        self.peer_note = "Enable sniffing to hear devices"
+        self.peer_note = "ENABLE SNIFF TO HEAR DEVICES"
         self._auth = None
         self._last_rest = -1e9
         # uplink watchdog
@@ -126,10 +126,10 @@ class KismetScreen(WebAppScreen):
         self.web.launch(self.build_start_cmd())
         if self.sniffing:
             self._start_guard()
-            self.peer_note = "Listening…"
+            self.peer_note = "LISTENING"
         else:
             self.peers = []
-            self.peer_note = "Sniffing off"
+            self.peer_note = "SNIFF OFF"
 
     # ---- REST feedback ----
     def poll_app(self):
@@ -142,13 +142,13 @@ class KismetScreen(WebAppScreen):
         if self._auth is None:
             self._auth = _kismet_auth() or False
         if not self._auth:
-            self.peer_note = "Finish Kismet web login to list peers here"
+            self.peer_note = "FINISH KISMET WEB LOGIN FOR PEERS"
             return True
         data = webapp.http_json(
             f"http://127.0.0.1:2501/devices/views/all/last-time/-30/devices.json",
             timeout=2.0, auth=self._auth)
         if not isinstance(data, list):
-            self.peer_note = "Peers visible in web UI"
+            self.peer_note = "PEERS VISIBLE IN WEB UI"
             return True
         peers = []
         for dev in data:
@@ -165,42 +165,48 @@ class KismetScreen(WebAppScreen):
                           "sig": sig})
         peers.sort(key=lambda p: -p["sig"])
         self.peers = peers
-        self.peer_note = f"{len(peers)} devices (last 30s)"
+        self.peer_note = f"{len(peers)} DEVICES · LAST 30s"
         return True
 
     # ---- rendering ----
     def draw_app(self, d, th, top):
         w = self.app.w
-        # sniff toggle
+        # sniff toggle — standing sniff down is a caution order, not a fault
         running = self.web.state == webapp.UP
         b = Button((12, top, w - 12, top + 42),
-                   "Disable sniffing" if self.sniffing else "Enable sniffing",
-                   kind="danger" if self.sniffing else "primary", font_size=16)
+                   "DISABLE SNIFF" if self.sniffing else "ENABLE SNIFF",
+                   kind="primary", color=th.warn if self.sniffing else None,
+                   font_size=16)
         b.enabled = running
         b.draw(d, th)
         self._btns["sniff"] = b
         top += 48
 
-        d.text((14, top), "PEERS", font=T.font(11, bold=True), fill=th.muted)
-        d.text((70, top), self.peer_note, font=T.font(11), fill=th.muted)
+        d.text((14, top), spaced("PEERS"),
+               font=T.font(10, bold=True, mono=True), fill=th.muted)
+        d.text((80, top + 1), self.peer_note[:35], font=T.font(T.SUB, mono=True),
+               fill=th.muted)
         top += 18
 
         avail = self.app.h - top - 8
         maxrows = max(0, int(avail // ROW_H))
         for i, p in enumerate(self.peers[:maxrows]):
             y = top + i * ROW_H
-            rrect(d, (12, y, w - 12, y + ROW_H - 6), 8, fill=th.card)
-            d.ellipse((20, y + ROW_H / 2 - 9, 34, y + ROW_H / 2 + 3),
-                      fill=_peer_color(th, p["type"]))
-            d.text((44, y + 5), p["name"], font=T.font(14, bold=True), fill=th.fg)
-            d.text((44, y + 22), (p["type"] or "?")[:20], font=T.font(11),
-                   fill=th.muted)
-            d.text((w - 56, y + 9), f"{p['sig']}", font=T.font(13, mono=True),
+            d.rectangle((12, y, w - 12, y + ROW_H - 6), fill=th.card,
+                        outline=th.card_hi, width=1)
+            # square pip keyed by device class (AP / client / BT)
+            status_square(d, (21, y + ROW_H / 2 - 8, 33, y + ROW_H / 2 + 4),
+                          "lit", _peer_color(th, p["type"]))
+            d.text((44, y + 4), p["name"], font=T.font(13, bold=True, mono=True),
+                   fill=th.fg)
+            d.text((44, y + 21), (p["type"] or "?")[:20].upper(),
+                   font=T.font(T.SUB, mono=True), fill=th.muted)
+            d.text((w - 60, y + 9), f"{p['sig']}", font=T.font(13, mono=True),
                    fill=th.muted)
         extra = len(self.peers) - maxrows
         if extra > 0:
-            d.text((16, top + maxrows * ROW_H), f"+{extra} more — see web UI",
-                   font=T.font(11), fill=th.muted)
+            d.text((16, top + maxrows * ROW_H), f"+{extra} MORE · SEE WEB UI",
+                   font=T.font(T.SUB, mono=True), fill=th.muted)
 
     def handle_app_tap(self, x, y):
         b = self._btns.get("sniff")

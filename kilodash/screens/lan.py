@@ -16,7 +16,7 @@ render streamed text rows. Dimensions come from self.app.w/h (never hardcode).
 from PIL import Image, ImageDraw
 
 from .. import scan, theme as T
-from ..widgets import Button, Keyboard, rrect
+from ..widgets import Button, Keyboard, spaced, status_square
 from .base import Screen, HEADER_H
 
 # Fixed control bands. The output pane below them starts at _out_top(), which
@@ -47,8 +47,8 @@ def _result_rows(host):
     for info in host.get("info", []):
         rows.append((info[:46], "warn" if info.startswith("OS: no") else "muted"))
     if not rows:
-        rows.append(("host up · no listed ports open" if host.get("up", True)
-                     else "host down", "muted"))
+        rows.append(("HOST UP · NO LISTED PORTS OPEN" if host.get("up", True)
+                     else "HOST DOWN", "muted"))
     return rows
 
 
@@ -137,23 +137,27 @@ class LanScreen(Screen):
     def _draw_target_row(self, d, th, w):
         run_w = 96
         self._target_box = (12, TARGET_Y, w - run_w - 18, TARGET_Y + FIELD_H)
-        rrect(d, self._target_box, 9, fill=th.card, outline=th.accent, width=1)
-        label = self.target or "tap to set target (IP / host / CIDR)"
-        fill = th.fg if self.target else th.muted
-        d.text((22, TARGET_Y + 10), label[:26],
-                font=T.font(16, mono=bool(self.target)), fill=fill)
-        # Run button. While scanning it's Stop; once a scan completes it shows
-        # the found-host count (tapping re-runs) — the count lives here instead
-        # of on a dedicated status line/badge.
+        d.rectangle(self._target_box, fill=th.card, outline=th.accent, width=1)
+        if self.target:
+            d.text((22, TARGET_Y + 10), self.target[:26],
+                   font=T.font(16, mono=True), fill=th.fg)
+        else:
+            d.text((22, TARGET_Y + 13), spaced("SET TARGET"),
+                   font=T.font(11, bold=True, mono=True), fill=th.muted)
+        # Run button. While scanning it's Stop (amber stand-down, not a fault);
+        # once a scan completes it shows the found-host count (tapping re-runs)
+        # — the count lives here instead of on a dedicated status line/badge.
+        color = None
         if self._scanning():
-            blabel, kind = "Stop", "danger"
+            blabel = "STOP"
+            color = th.warn
         elif (self.job is not None and self.job.done
                 and self.job.mode == self.mode and self.job.host_count):
-            blabel, kind = str(self.job.host_count), "primary"
+            blabel = str(self.job.host_count)
         else:
-            blabel, kind = "Run", "primary"
+            blabel = "RUN"
         self.run_btn = Button((w - run_w - 6, TARGET_Y, w - 8, TARGET_Y + FIELD_H),
-                              blabel, kind=kind, font_size=17)
+                              blabel, kind="primary", color=color, font_size=16)
         self.run_btn.draw(d, th)
 
     def _draw_mode_control(self, d, th, w):
@@ -165,23 +169,24 @@ class LanScreen(Screen):
             x0 = 12 + i * (seg_w + gap)
             box = (x0, MODE_Y, x0 + seg_w, MODE_Y + SEG_H)
             active = (m == self.mode)
-            rrect(d, box, 8, fill=th.accent if active else th.card,
-                  outline=th.card_hi, width=1)
-            f = T.font(14, bold=active)
-            tw = d.textlength(m, font=f)
-            d.text((x0 + seg_w / 2 - tw / 2, MODE_Y + 9), m, font=f,
-                   fill=th.ink if active else th.muted)
+            d.rectangle(box, fill=th.accent if active else th.card,
+                        outline=th.accent if active else th.card_hi, width=1)
+            f = T.font(11, bold=True, mono=True)
+            lab = m.upper()
+            tw = d.textlength(lab, font=f)
+            d.text((x0 + seg_w / 2 - tw / 2, MODE_Y + (SEG_H - 11) / 2 - 1),
+                   lab, font=f, fill=th.ink if active else th.muted)
             self._seg_boxes.append((box, m))
 
     def _draw_ports_row(self, d, th, w):
         # Full-width ports field (no host badge sharing the line).
         self._ports_box = (12, PORTS_Y, w - 12, PORTS_Y + FIELD_H)
-        rrect(d, self._ports_box, 9, fill=th.card, outline=th.accent, width=1)
+        d.rectangle(self._ports_box, fill=th.card, outline=th.accent, width=1)
         # Just the port list — muted when it's the default set, bright once the
         # user overrides it. (The field is tappable; no room to spell that out.)
         shown = self.ports or scan.COMMON_PORTS
         fill = th.fg if self.ports else th.muted
-        d.text((22, PORTS_Y + 11), shown[:38],
+        d.text((22, PORTS_Y + 11), shown[:33],
                font=T.font(14, mono=True), fill=fill)
 
     # ---- Discover: host cards ----
@@ -194,10 +199,11 @@ class LanScreen(Screen):
             self.content_h = view_h
             d.rectangle((0, out_top, w, h), fill=th.bg)
             if self.job and self.job.mode == "Discover" and not self.job.done:
-                hint = self.job.status
+                hint = self.job.status.upper()
             else:
-                hint = "Tap Run to discover hosts on the subnet"
-            d.text((22, out_top + 16), hint, font=T.font(15), fill=th.muted)
+                hint = "TAP RUN TO SWEEP THE SUBNET"
+            d.text((22, out_top + 16), hint[:36],
+                   font=T.font(12, bold=True, mono=True), fill=th.muted)
             return
 
         self.content_h = max(CARD_GAP + len(hosts) * (CARD_H + CARD_GAP), view_h)
@@ -206,28 +212,34 @@ class LanScreen(Screen):
         for i, host in enumerate(hosts):
             y0 = CARD_GAP + i * (CARD_H + CARD_GAP)
             y1 = y0 + CARD_H
-            box = (CARD_MARGIN, y0, w - CARD_MARGIN, y1)
             up = host.get("up", True)
             ip = host.get("ip", "")
             selected = ip == self.selected_ip
-            frame = th.ok if up else th.bad          # up/down encoded in frame
-            rrect(sd, box, 10, fill=th.card_hi if selected else th.card,
-                  outline=frame, width=3 if selected else 2)
+            sd.rectangle((CARD_MARGIN, y0, w - CARD_MARGIN, y1),
+                         fill=th.card_hi if selected else th.card,
+                         outline=th.accent if selected else th.card_hi,
+                         width=2 if selected else 1)
+            # square status glyph: lit = alive, hollow = down (down is
+            # absence, not a fault — no red)
+            status_square(sd, (CARD_MARGIN + 10, y0 + 12,
+                               CARD_MARGIN + 22, y0 + 24),
+                          "lit" if up else "hollow",
+                          th.ok if up else th.muted)
             # line 1: IP (accent) left · MAC (muted) right — colour separation
-            sd.text((CARD_MARGIN + 12, y0 + 8), ip,
-                    font=T.font(15, bold=True, mono=True), fill=th.accent)
+            sd.text((CARD_MARGIN + 32, y0 + 8), ip,
+                    font=T.font(14, bold=True, mono=True), fill=th.accent)
             mac = host.get("mac", "")
             if mac:
                 machex = mac.split()[0]              # hex only; vendor won't fit
-                mf = T.font(13, mono=True)
+                mf = T.font(11, mono=True)
                 mw = sd.textlength(machex, font=mf)
-                sd.text((w - CARD_MARGIN - 12 - mw, y0 + 9), machex,
+                sd.text((w - CARD_MARGIN - 12 - mw, y0 + 10), machex,
                         font=mf, fill=th.muted)
             # line 2: identity, full line — reverse-DNS name if we have one,
             # else the MAC vendor (e.g. "Raspberry Pi Foundation"), else unknown.
             name = host.get("host") or host.get("vendor")
-            sd.text((CARD_MARGIN + 12, y0 + 29), (name or "(unknown host)")[:40],
-                    font=T.font(14), fill=th.fg if name else th.muted)
+            sd.text((CARD_MARGIN + 32, y0 + 29), (name or "(unknown host)")[:34],
+                    font=T.font(13), fill=th.fg if name else th.muted)
             self._card_hits.append((CARD_MARGIN, y0, w - CARD_MARGIN, y1, ip))
         self.paste_list(out_top, view_h, surf)
 
@@ -242,12 +254,13 @@ class LanScreen(Screen):
             self.content_h = view_h
             d.rectangle((0, out_top, w, h), fill=th.bg)
             if job and job.error:
-                msg, col = job.error, th.bad
+                msg, col = job.error.upper(), th.bad     # actual fault: red
             elif job:
-                msg, col = job.status, th.muted
+                msg, col = job.status.upper(), th.muted
             else:
-                msg, col = "Tap Run to scan this target", th.muted
-            d.text((22, out_top + 16), msg[:44], font=T.font(15), fill=col)
+                msg, col = "TAP RUN TO SCAN THIS TARGET", th.muted
+            d.text((22, out_top + 16), msg[:36],
+                   font=T.font(12, bold=True, mono=True), fill=col)
             return
         if len(hosts) == 1:
             self._draw_single_result(hosts[0], th, w, view_h, out_top)
@@ -276,21 +289,25 @@ class LanScreen(Screen):
         sd = ImageDraw.Draw(surf)
         y = CARD_GAP
         for host, hh in zip(hosts, heights):
-            frame = th.ok if host.get("up", True) else th.bad
-            rrect(sd, (CARD_MARGIN, y, w - CARD_MARGIN, y + hh), 10,
-                  fill=th.card, outline=frame, width=2)
+            up = host.get("up", True)
+            sd.rectangle((CARD_MARGIN, y, w - CARD_MARGIN, y + hh),
+                         fill=th.card, outline=th.card_hi, width=1)
+            status_square(sd, (CARD_MARGIN + 10, y + 12,
+                               CARD_MARGIN + 22, y + 24),
+                          "lit" if up else "hollow",
+                          th.ok if up else th.muted)
             ip = host.get("ip", "")
-            sd.text((CARD_MARGIN + 12, y + 8), ip,
-                    font=T.font(15, bold=True, mono=True), fill=th.accent)
+            sd.text((CARD_MARGIN + 32, y + 8), ip,
+                    font=T.font(14, bold=True, mono=True), fill=th.accent)
             mac = host.get("mac", "")
             if mac:
                 machex = mac.split()[0]
-                mf = T.font(13, mono=True)
+                mf = T.font(11, mono=True)
                 mw = sd.textlength(machex, font=mf)
-                sd.text((w - CARD_MARGIN - 12 - mw, y + 9), machex,
+                sd.text((w - CARD_MARGIN - 12 - mw, y + 10), machex,
                         font=mf, fill=th.muted)
             name = host.get("host") or host.get("vendor") or "(unknown host)"
-            sd.text((CARD_MARGIN + 12, y + 27), name[:40],
+            sd.text((CARD_MARGIN + 32, y + 27), name[:34],
                     font=T.font(13), fill=th.muted)
             ry = y + head_h
             for txt, color in _result_rows(host):
