@@ -170,6 +170,20 @@ class KismetScreen(WebAppScreen):
         return True
 
     # ---- rendering ----
+
+    def model_buttons(self):
+        rows = super().model_buttons()
+        rows.append({"id": "sniff", "label": "SNIFF",
+                     "enabled": getattr(self.web, "state", None) == webapp.UP,
+                     "confirm": False})
+        return rows
+
+    def handle_button(self, bid):
+        if bid == "sniff":
+            self._toggle_sniff()
+            return True
+        return super().handle_button(bid)
+
     def draw_app(self, d, th, top):
         w = self.app.w
         # sniff toggle — standing sniff down is a caution order, not a fault

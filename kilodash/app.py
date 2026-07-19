@@ -82,6 +82,7 @@ class App:
         # emitter, so the attribute must be readable from the moment any
         # screen can be opened. Constructed further down.
         self.events = None
+        self._web_arm = None     # (tile_id, button_id, deadline) for §6 confirms
         self.screens = [cls(self) for cls in screen_classes]
         self.launcher = self.screens[0]
         self.calibration = CalibrationScreen(self)
@@ -241,6 +242,8 @@ class App:
     def open_screen(self, scr):
         if scr is self.current:
             return
+        # A pending confirm never survives leaving the screen it belongs to.
+        self._web_arm = None
         self.current.on_leave()
         scr.scroll = 0
         scr.on_enter()
@@ -284,11 +287,23 @@ class App:
             # The ACTIVE screen's declared buttons are the authorisation
             # surface: the box never synthesises input for a screen that is
             # not showing, so a stale press is refused, not applied blind.
-            allowed = {b.get("id") for b in self.current.model_buttons()}
-            if bid not in allowed:
+            btns = {b.get("id"): b for b in self.current.model_buttons()}
+            b = btns.get(bid)
+            if b is None:
                 return self._reject_web(
                     cmd, f"button '{bid}' not on active screen "
                          f"'{self.current.tile_id}'")
+            if b.get("enabled") is False:
+                # Several screens gate a control in the DRAW pass (storing
+                # None in a hit-box) rather than in handle_tap. handle_button
+                # bypasses hit-testing entirely, so that gate would simply
+                # vanish — re-check it here.
+                return self._reject_web(cmd, f"button '{bid}' is disabled")
+            if b.get("confirm") and not self._web_armed(bid):
+                self._arm_web_button(bid)
+                self.toast("CONFIRM ON WEB", 3.0)
+                return None
+            self._web_arm = None
             self._wake()
             if self.current.handle_button(bid):
                 self.dirty = True
@@ -303,6 +318,29 @@ class App:
         if self.events:
             self.events.send_error("bad_command", detail)
         return None
+
+    # Two-press window for destructive web actions. Short enough that it
+    # cannot be satisfied by accident, long enough to be a deliberate second
+    # click. Mirrors the arm/confirm idiom the panel already uses for AIS TX
+    # (4 s) and table deletion (3 s).
+    WEB_CONFIRM_S = 5.0
+
+    def _arm_web_button(self, bid):
+        self._web_arm = (self.current.tile_id, bid,
+                         time.monotonic() + self.WEB_CONFIRM_S)
+
+    def _web_armed(self, bid):
+        """True if this exact button, on this exact screen, was armed and the
+        window has not closed. Navigating away or pressing something else
+        drops the arm — a confirm must be unambiguous about what it confirms."""
+        a = getattr(self, "_web_arm", None)
+        if not a:
+            return False
+        tile, armed_id, until = a
+        if time.monotonic() > until:
+            self._web_arm = None
+            return False
+        return tile == self.current.tile_id and armed_id == bid
 
     def open_named_screen(self):
         """Dev seam: KILODASH_OPEN=<tile_id> (e.g. `signal-k`) jumps straight

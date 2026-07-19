@@ -220,6 +220,18 @@ class WifiSniffScreen(Screen):
             {"label": "STATUS", "value": str(self.status or "—"), "state": None},
         ]
 
+
+    def model_buttons(self):
+        return [{"id": "capture",
+                 "label": "STOP" if self.running else "START",
+                 "enabled": True, "confirm": False}]
+
+    def handle_button(self, bid):
+        if bid == "capture":
+            self._stop() if self.running else self._start()
+            return True
+        return False
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         top = HEADER_H + 46

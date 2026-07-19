@@ -126,6 +126,41 @@ class SerialScreen(Screen):
                          "state": None})
         return rows
 
+
+    def model_buttons(self):
+        """While the port is open the panel accepts only `close` — every other
+        control is dead (serialmon.py handle_tap). Mirror that exactly."""
+        opened = self.open
+        return [
+            {"id": "port", "label": "CLOSE" if opened else "OPEN",
+             "enabled": bool(self._cur_port()), "confirm": False},
+            {"id": "port_prev", "label": "PORT -", "enabled": not opened,
+             "confirm": False},
+            {"id": "port_next", "label": "PORT +", "enabled": not opened,
+             "confirm": False},
+            {"id": "baud_prev", "label": "BAUD -", "enabled": not opened,
+             "confirm": False},
+            {"id": "baud_next", "label": "BAUD +", "enabled": not opened,
+             "confirm": False},
+        ]
+
+    def handle_button(self, bid):
+        if bid == "port":
+            self._close() if self.open else self._open()
+            return True
+        if self.open:
+            return False            # everything else is frozen while open
+        n = len(self.ports or ())
+        if bid == "port_prev" and n:
+            self.port_idx = (self.port_idx - 1) % n; return True
+        if bid == "port_next" and n:
+            self.port_idx = (self.port_idx + 1) % n; return True
+        if bid == "baud_prev":
+            self.baud_idx = (self.baud_idx - 1) % len(BAUDS); return True
+        if bid == "baud_next":
+            self.baud_idx = (self.baud_idx + 1) % len(BAUDS); return True
+        return False
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         y = HEADER_H + 8

@@ -139,6 +139,43 @@ class LogicScreen(Screen):
                              "state": "fault"})
         return rows
 
+
+    def model_buttons(self):
+        """Everything except `run` freezes while a capture is in flight, as
+        it does on the panel (logic.py handle_tap)."""
+        running = self._running()
+        return [
+            {"id": "run", "label": "STOP" if running else "RUN",
+             "enabled": True, "confirm": False},
+            {"id": "rate_prev", "label": "RATE -", "enabled": not running,
+             "confirm": False},
+            {"id": "rate_next", "label": "RATE +", "enabled": not running,
+             "confirm": False},
+            {"id": "samp_prev", "label": "DEPTH -", "enabled": not running,
+             "confirm": False},
+            {"id": "samp_next", "label": "DEPTH +", "enabled": not running,
+             "confirm": False},
+        ]
+
+    def handle_button(self, bid):
+        if bid == "run":
+            if self._running():
+                self.job.stop()
+            else:
+                self.start()
+            return True
+        if self._running():
+            return False
+        if bid == "rate_prev":
+            self.rate_idx = (self.rate_idx - 1) % len(la.SAMPLERATES); return True
+        if bid == "rate_next":
+            self.rate_idx = (self.rate_idx + 1) % len(la.SAMPLERATES); return True
+        if bid == "samp_prev":
+            self.samp_idx = (self.samp_idx - 1) % len(la.SAMPLE_COUNTS); return True
+        if bid == "samp_next":
+            self.samp_idx = (self.samp_idx + 1) % len(la.SAMPLE_COUNTS); return True
+        return False
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         self._btns = {}

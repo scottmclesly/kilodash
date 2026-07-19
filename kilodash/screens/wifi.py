@@ -102,6 +102,31 @@ class WifiScreen(Screen):
                      "state": None})
         return rows
 
+
+    def model_buttons(self):
+        """`radio` is confirm-guarded: turning the radio off from the web can
+        drop the very link the request arrived on."""
+        return [
+            {"id": "scan", "label": "SCAN",
+             "enabled": bool(self.enabled) and not self.scan_task,
+             "confirm": False},
+            {"id": "radio", "label": "RADIO OFF" if self.enabled else "RADIO ON",
+             "enabled": True, "confirm": bool(self.enabled)},
+        ]
+
+    def handle_button(self, bid):
+        if bid == "scan":
+            if self.enabled and not self.scan_task:
+                self.start_scan()
+            return True
+        if bid == "radio":
+            system.set_wifi(not self.enabled)
+            self.enabled = system.wifi_enabled()
+            if self.enabled:
+                self.start_scan()
+            return True
+        return False
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         top = HEADER_H + 50

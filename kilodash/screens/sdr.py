@@ -253,6 +253,43 @@ class SdrScreen(Screen):
                      "state": None})
         return rows
 
+
+    def model_buttons(self):
+        band = BANDS[self.band] if 0 <= self.band < len(BANDS) else {}
+        busy = self._busy()
+        return [
+            {"id": "scan", "label": "SWEEP", "enabled": not busy,
+             "confirm": False},
+            {"id": "identify", "label": "DECODE",
+             "enabled": bool(band.get("dec")) and not busy, "confirm": False},
+            {"id": "capture", "label": "CAPTURE", "enabled": not busy,
+             "confirm": False},
+            {"id": "band_prev", "label": "BAND -", "enabled": not busy,
+             "confirm": False},
+            {"id": "band_next", "label": "BAND +", "enabled": not busy,
+             "confirm": False},
+        ]
+
+    def handle_button(self, bid):
+        # These gates live in the draw pass on the panel (Button.enabled), and
+        # handle_button bypasses hit-testing, so re-check them here.
+        if self._busy():
+            return False
+        if bid == "scan":
+            self.start_scan(); return True
+        if bid == "identify":
+            band = BANDS[self.band]
+            if band.get("dec"):
+                self.start_identify()
+            return True
+        if bid == "capture":
+            self.start_capture(); return True
+        if bid == "band_prev":
+            self.band = (self.band - 1) % len(BANDS); return True
+        if bid == "band_next":
+            self.band = (self.band + 1) % len(BANDS); return True
+        return False
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         b = BANDS[self.band]

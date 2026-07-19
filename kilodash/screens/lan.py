@@ -147,6 +147,18 @@ class LanScreen(Screen):
                          "state": None})
         return rows
 
+
+    def model_buttons(self):
+        return [{"id": "scan",
+                 "label": "STOP" if self._scanning() else "SCAN",
+                 "enabled": True, "confirm": False}]
+
+    def handle_button(self, bid):
+        if bid == "scan":
+            self.stop_scan() if self._scanning() else self.start_scan()
+            return True
+        return False
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         out_top = self._out_top()

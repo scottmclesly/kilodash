@@ -224,6 +224,19 @@ class SignalKScreen(WebAppScreen):
                      "state": "ok" if model else "caution"})
         return rows
 
+
+    def model_buttons(self):
+        rows = super().model_buttons()
+        rows.append({"id": "page", "label": "PAGE", "enabled": True,
+                     "confirm": False})
+        return rows
+
+    def handle_button(self, bid):
+        if bid == "page":
+            self.page = (self.page + 1) % len(PAGES)
+            return True
+        return super().handle_button(bid)
+
     def draw_app(self, d, th, top):
         w = self.app.w
         panel_top = top

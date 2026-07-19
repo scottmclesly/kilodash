@@ -102,6 +102,19 @@ class HealthScreen(Screen):
                          "state": "fault"})
         return rows
 
+
+    def model_buttons(self):
+        """Panel guards this with a modal dialog; the web uses the two-press
+        confirm for the same reason."""
+        return [{"id": "poweroff", "label": "SHUTDOWN", "enabled": True,
+                 "confirm": True}]
+
+    def handle_button(self, bid):
+        if bid == "poweroff":
+            subprocess.Popen(["sudo", "poweroff"])
+            return True
+        return False
+
     def draw_content(self, d, th):
         w = self.app.w
         m = self.d

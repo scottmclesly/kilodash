@@ -334,7 +334,30 @@ class N2kScreen(Screen):
             "pgns_loaded": len(self.tables or {}),
             "unknown": st.get("unknown", 0),
             "truncated": len(fields) >= 64,
+            "buttons": self.model_buttons(),
         }
+
+
+    def model_buttons(self):
+        st = self._stats or {}
+        return [
+            {"id": "save", "label": "SAVE LOG",
+             "enabled": bool(st.get("log")), "confirm": False},
+            {"id": "gnss", "label": "GNSS NODE", "enabled": True,
+             "confirm": True},
+        ]
+
+    def handle_button(self, bid):
+        if bid == "save":
+            if (self._stats or {}).get("log"):
+                self._save()
+            return True
+        if bid == "gnss":
+            # The GNSS source node TRANSMITS on the bus (the Phase 3 carve-out
+            # in n2k/node.py). Confirm-guarded for the same reason AIS TX is.
+            self._toggle_gnss()
+            return True
+        return False
 
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h

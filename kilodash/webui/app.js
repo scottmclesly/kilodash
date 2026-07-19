@@ -126,6 +126,40 @@ function flash(el) {
   setTimeout(() => el.classList.remove('hot'), 60);
 }
 
+
+/* Buttons are declared by the ACTIVE screen's model and are the box's
+ * authorisation surface (§6) — the web renders what it is given and nothing
+ * more. `confirm: true` marks an action the box requires TWICE; the hint
+ * below is presentation only. The BOX enforces the window, so a stale or
+ * drifted hint can never cause an action. */
+function buttonStrip(btns) {
+  if (!btns || !btns.length) return '';
+  return '<div class="btns">' + btns.map((b) =>
+    `<button class="btn${b.confirm ? ' danger' : ''}" data-btn="${esc(b.id)}"` +
+    `${b.confirm ? ' data-confirm="1"' : ''}` +
+    `${b.enabled === false ? ' disabled' : ''}>${up(b.label || b.id)}</button>`
+  ).join('') + '</div>';
+}
+
+/* Local press hint for a confirm button. The first press is sent (the box
+ * arms on it); the label changes so the operator knows a second press is
+ * expected. It reverts on its own, slightly before the box's own window, so
+ * the UI never claims an arm the box has already dropped. */
+const CONFIRM_HINT_MS = 4500;
+function armHint(el) {
+  if (el.dataset.armed) return false;
+  const original = el.textContent;
+  el.dataset.armed = '1';
+  el.textContent = 'PRESS AGAIN';
+  el.classList.add('armed');
+  setTimeout(() => {
+    delete el.dataset.armed;
+    el.textContent = original;
+    el.classList.remove('armed');
+  }, CONFIRM_HINT_MS);
+  return true;
+}
+
 // ------------------------------------------------------------- renderers ----
 /* Each renderer owns its subtree. `mount` builds it; `patch` updates in place
  * so scroll position survives and changed cells can flash individually. A
@@ -136,7 +170,8 @@ const R = {};
 // --- §7.1 home -------------------------------------------------------------
 R.home = {
   mount(m) {
-    panel.innerHTML = '<div class="grid" id="grid"></div>';
+    panel.innerHTML = '<div class="grid" id="grid"></div>' +
+                      '<div id="home-btns"></div>';
     this.patch(m, true);
   },
   patch(m) {
@@ -156,6 +191,8 @@ R.home = {
     if (!tiles.length) {
       grid.innerHTML = '<div class="empty">no tiles reported</div>';
     }
+    const hb = $('home-btns');
+    if (hb) hb.innerHTML = buttonStrip(m.buttons);
   },
 };
 
@@ -176,7 +213,8 @@ R.canbus = {
         </tr></thead>
         <tbody id="cb-rows"></tbody>
       </table></div>
-      <div id="cb-trunc"></div>`;
+      <div id="cb-trunc"></div>
+      <div id="cb-btns"></div>`;
     const meter = $('cb-meter');
     for (let i = 0; i < SEGN; i++) {
       const d = document.createElement('span');
@@ -285,6 +323,7 @@ R.canbus = {
     // A partial table must never read as a whole one (§7.2).
     $('cb-trunc').innerHTML = m.truncated
       ? `<div class="trunc">TABLE TRUNCATED · ${rows.length} SHOWN</div>` : '';
+    $('cb-btns').innerHTML = buttonStrip(m.buttons);
   },
 };
 
@@ -300,7 +339,8 @@ R.n2k = {
         </tr></thead>
         <tbody id="n2-rows"></tbody>
       </table></div>
-      <div id="n2-trunc"></div>`;
+      <div id="n2-trunc"></div>
+      <div id="n2-btns"></div>`;
     this.prev = {};
     this.patch(m, true);
   },
@@ -367,6 +407,7 @@ R.n2k = {
     }
     $('n2-trunc').innerHTML = m.truncated
       ? `<div class="trunc">FIELD LIST TRUNCATED · ${fields.length} SHOWN</div>` : '';
+    $('n2-btns').innerHTML = buttonStrip(m.buttons);
   },
 };
 
@@ -380,7 +421,8 @@ R.lightdock = {
       <div class="stages" id="ld-stages"></div>
       <div class="prog"><div class="fill" id="ld-fill"></div></div>
       <div class="proglabel" id="ld-plabel"></div>
-      <div class="log" id="ld-log"></div>`;
+      <div class="log" id="ld-log"></div>
+      <div id="ld-btns"></div>`;
     this.patch(m, true);
   },
   patch(m) {
@@ -420,6 +462,7 @@ R.lightdock = {
       : '<div class="empty">no session</div>';
     const lg = $('ld-log');
     lg.scrollTop = lg.scrollHeight;      // ship-log: newest at the bottom
+    $('ld-btns').innerHTML = buttonStrip(m.buttons);
   },
 };
 
@@ -469,11 +512,8 @@ R.generic = {
       });
     }
 
-    const btns = m.buttons || [];
-    $('gn-btns').innerHTML = btns.map((b) =>
-      `<button class="btn" data-btn="${esc(b.id)}"
-        ${b.enabled === false ? 'disabled' : ''}>${up(b.label || b.id)}</button>`
-    ).join('');
+    $('gn-btns').outerHTML = buttonStrip(m.buttons) ||
+      '<div class="btns" id="gn-btns"></div>';
     $('gn-note').textContent = m.note ? String(m.note).toUpperCase() : '';
   },
 };
@@ -620,7 +660,13 @@ document.addEventListener('click', (ev) => {
   const tile = ev.target.closest('[data-tile]');
   if (tile && !tile.disabled) { send('tap_tile', {tile: tile.dataset.tile}); return; }
   const btn = ev.target.closest('[data-btn]');
-  if (btn && !btn.disabled) { send('button_press', {button: btn.dataset.btn}); return; }
+  if (btn && !btn.disabled) {
+    // Every press is sent. The box arms on the first and acts on the second;
+    // the hint just tells the operator a second press is expected.
+    send('button_press', {button: btn.dataset.btn});
+    if (btn.dataset.confirm) armHint(btn);
+    return;
+  }
   if (ev.target.closest('#back')) send('back');
 });
 

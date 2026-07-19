@@ -108,6 +108,17 @@ class I2cScreen(Screen):
                          "state": None if hint else "caution"})
         return rows
 
+
+    def model_buttons(self):
+        return [{"id": "scan", "label": "SCAN",
+                 "enabled": self.task is None, "confirm": False}]
+
+    def handle_button(self, bid):
+        if bid == "scan" and self.task is None:
+            self.start()
+            return True
+        return False
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         top = HEADER_H + 46

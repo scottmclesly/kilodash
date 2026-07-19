@@ -125,10 +125,11 @@ def main():
 
     inventory = snap.get("tiles") or []
     print(f"  {len(inventory)} tiles in the launcher inventory\n")
-    print(f"  {'TILE':14s} {'AVAIL':6s} {'KIND':10s} {'DRAWS':>6s}  NOTE")
-    print(f"  {'-'*14} {'-'*6} {'-'*10} {'-'*6}  {'-'*34}")
+    print(f"  {'TILE':14s} {'AVAIL':6s} {'KIND':10s} {'ROWS':>5s} {'BTN':>4s} "
+          f"{'CONF':>4s}  NOTE")
+    print(f"  {'-'*14} {'-'*6} {'-'*10} {'-'*5} {'-'*4} {'-'*4}  {'-'*28}")
 
-    empty, unreachable, ok = [], [], []
+    empty, unreachable, ok, buttoned = [], [], [], []
     post(args.host, {"action": "home"})
     time.sleep(args.dwell)
     st.take("TileChanged")
@@ -144,12 +145,14 @@ def main():
         bounce = st.take("TileChanged")
         landed = (bounce or tc)
         if not landed:
-            print(f"  {tid:14s} {'?':6s} {'-':10s} {'-':>6s}  no TileChanged (HTTP {code})")
+            print(f"  {tid:14s} {'?':6s} {'-':10s} {'-':>5s} {'-':>4s} "
+                  f"{'-':>4s}  no TileChanged (HTTP {code})")
             unreachable.append(tid)
             continue
         if landed.get("tile") != tid:
             print(f"  {tid:14s} {str(t.get('available')):6s} {'-':10s} "
-                  f"{'-':>6s}  bounced to {landed.get('tile')} (device absent)")
+                  f"{'-':>5s} {'-':>4s} {'-':>4s}  bounced to "
+                  f"{landed.get('tile')} (device absent)")
             unreachable.append(tid)
             continue
         model = landed.get("model") or {}
@@ -160,8 +163,13 @@ def main():
             empty.append(tid)
         else:
             ok.append(tid)
+        btns = model.get("buttons") or []
+        conf = sum(1 for b in btns if b.get("confirm"))
         print(f"  {tid:14s} {str(t.get('available')):6s} "
-              f"{str(model.get('kind')):10s} {w:>6d}  {note}")
+              f"{str(model.get('kind')):10s} {w:>5d} {len(btns):>4d} "
+              f"{conf:>4d}  {note}")
+        if btns:
+            buttoned.append(tid)
         post(args.host, {"action": "home"})
         time.sleep(0.4)
         st.take("TileChanged")
@@ -171,6 +179,10 @@ def main():
     print(f"  drawable : {len(ok)}")
     print(f"  EMPTY    : {len(empty)}  {empty}")
     print(f"  skipped  : {len(unreachable)}  (device absent / unreachable)")
+    print(f"  with buttons : {len(buttoned)}")
+    nobtn = [t for t in ok if t not in buttoned]
+    if nobtn:
+        print(f"  NO BUTTONS   : {nobtn}")
     return 1 if empty else 0
 
 

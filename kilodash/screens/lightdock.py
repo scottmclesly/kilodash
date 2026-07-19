@@ -189,7 +189,31 @@ class LightDockScreen(Screen):
                 "counts": dict(eng.counts or {}),
             },
             "log": log,
+            "buttons": self.model_buttons(),
         }
+
+
+    def model_buttons(self):
+        running = self._running()
+        pull = bool(self.app.config["lightdock_pull_logs"])
+        return [
+            {"id": "resync", "label": "RESYNC", "enabled": not running,
+             "confirm": False},
+            {"id": "pull_logs",
+             "label": "PULL LOGS ON" if pull else "PULL LOGS OFF",
+             "enabled": not running, "confirm": False},
+        ]
+
+    def handle_button(self, bid):
+        if self._running():
+            return False
+        if bid == "resync":
+            self._start_sync(); return True
+        if bid == "pull_logs":
+            cur = bool(self.app.config["lightdock_pull_logs"])
+            self.app.config.set("lightdock_pull_logs", not cur)
+            return True
+        return False
 
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h

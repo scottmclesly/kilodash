@@ -112,6 +112,30 @@ class WebAppScreen(Screen):
             rows.append({"label": "LAST", "value": str(msg), "state": None})
         return rows
 
+
+    def model_buttons(self):
+        """Generic service controls. `stop` is confirm-guarded because the
+        panel guards it with a modal dialog — the web must not be the weaker
+        path. Gates read cached `self.web.state`, never web.running (probes)
+        or available() (subprocess)."""
+        up = getattr(self.web, "state", None) == webapp.UP
+        starting = getattr(self.web, "state", None) == webapp.STARTING
+        return [
+            {"id": "start", "label": "START", "enabled": not (up or starting),
+             "confirm": False},
+            {"id": "stop", "label": "STOP", "enabled": bool(up or starting),
+             "confirm": True},
+        ]
+
+    def handle_button(self, bid):
+        if bid == "start":
+            self.web.launch(self.build_start_cmd())
+            return True
+        if bid == "stop":
+            self.web.stop()
+            return True
+        return False
+
     def draw_content(self, d, th):
         w = self.app.w
         self._btns = {}

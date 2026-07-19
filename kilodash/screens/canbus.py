@@ -567,7 +567,44 @@ class CanScreen(Screen):
             "total": st.get("total", 0),
             "rows": rows,
             "truncated": len(src) > 64,
+            "buttons": self.model_buttons(),
         }
+
+
+    def model_buttons(self):
+        """`provision` is confirm-guarded: it modifies the host system. The
+        panel gates detect/provision via Button.enabled during draw, and
+        handle_button never hit-tests, so those gates are restated here."""
+        busy = bool(self.detect_task) or bool(getattr(self, "prov_task", None))
+        st = self._stats or {}
+        return [
+            {"id": "detect", "label": "DETECT",
+             "enabled": bool(self.iface) and self.detect_task is None,
+             "confirm": False},
+            {"id": "provision", "label": "PROVISION", "enabled": not busy,
+             "confirm": True},
+            {"id": "log", "label": "LOG STOP" if self.logging else "LOG START",
+             "enabled": bool(self.iface), "confirm": False},
+            {"id": "save", "label": "SAVE RING",
+             "enabled": not busy and bool(st.get("ring")), "confirm": False},
+        ]
+
+    def handle_button(self, bid):
+        if bid == "detect":
+            if self.iface and self.detect_task is None:
+                self._detect()
+            return True
+        if bid == "provision":
+            self._start_provision(); return True
+        if bid == "log":
+            if self.iface:
+                self._toggle_log()
+            return True
+        if bid == "save":
+            if (self._stats or {}).get("ring"):
+                self._save_ring()
+            return True
+        return False
 
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h

@@ -79,6 +79,30 @@ class NodeRedScreen(WebAppScreen):
                              "value": val, "state": None})
         return rows
 
+
+    def model_buttons(self):
+        """The flow's own six buttons. What each does is defined by the user's
+        Node-RED flow, so no confirm is claimed here — the box cannot know
+        whether a given flow button is harmless or not."""
+        rows = super().model_buttons()
+        up = getattr(self.web, "state", None) == webapp.UP
+        for i, b in enumerate(self.buttons or []):
+            rows.append({"id": f"btn{i}", "label": str(b.get("label", i + 1)),
+                         "enabled": up, "confirm": False})
+        return rows
+
+    def handle_button(self, bid):
+        if bid.startswith("btn"):
+            try:
+                i = int(bid[3:])
+            except ValueError:
+                return False
+            if 0 <= i < len(self.buttons or []):
+                webapp.http_post(f"{BASE}/btn/{i + 1}", timeout=1.5)
+                return True
+            return False
+        return super().handle_button(bid)
+
     def draw_app(self, d, th, top):
         w = self.app.w
         gap = 8

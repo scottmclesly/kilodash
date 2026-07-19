@@ -148,6 +148,30 @@ class AisCatcherScreen(WebAppScreen):
             rows.append({"label": "OWN MMSI", "value": str(mmsi), "state": None})
         return rows
 
+
+    def model_buttons(self):
+        """TX is confirm-guarded, matching the panel's own 4 s arm. This is a
+        RADIO TRANSMIT trigger reachable over an unauthenticated LAN, so the
+        second press is not optional — see WEB-PROTOCOL.md §10.
+
+        `enabled` deliberately does NOT call _tx_ready(): it shells out to
+        `which` four times, uncached. A press when the hardware is absent
+        fails safely in _start_tx()."""
+        rows = super().model_buttons()
+        rows.append({"id": "tx",
+                     "label": "TX STOP" if self.transmitting else "TX START",
+                     "enabled": True, "confirm": not self.transmitting})
+        return rows
+
+    def handle_button(self, bid):
+        if bid == "tx":
+            if self.transmitting:
+                self._stop_tx()
+            else:
+                self._start_tx()
+            return True
+        return super().handle_button(bid)
+
     def draw_app(self, d, th, top):
         w = self.app.w
         gap = 8

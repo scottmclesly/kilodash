@@ -175,8 +175,21 @@ class Screen:
         return []
 
     def model_buttons(self):
-        """Buttons the web may press, as {"id", "label", "enabled"}. `id` is
-        what a §6 `button_press` command names, and the box refuses a press
-        for a button not listed by the ACTIVE screen — so this list is the
-        authorisation surface, not just a rendering hint."""
+        """Buttons the web may press: {"id", "label", "enabled", "confirm"}.
+
+        `id` is what a §6 `button_press` command names, and the box refuses a
+        press for a button not listed by the ACTIVE screen — so this list is
+        the authorisation surface, not just a rendering hint.
+
+        `confirm: True` marks an action that must be pressed TWICE, the second
+        press inside a short window (see App.WEB_CONFIRM_S). Set it on
+        anything destructive, irreversible, or that takes the box off the
+        network — reboot, shutdown, delete, transmit.
+
+        This is deliberately stricter than the panel. Several panel actions
+        (Settings' Reboot/Shutdown) fire on a single tap, which is safe there
+        because a tap requires physically standing at the box. An HTTP POST
+        requires only being on the LAN, and the mirror runs with no auth, so
+        the same action needs a second deliberate act. The asymmetry is the
+        point; it is recorded in WEB-PROTOCOL.md §10."""
         return []

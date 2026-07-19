@@ -686,6 +686,37 @@ Changes that **are** a version bump: removing or retyping any field, changing
   `tableconv.py`: validate against the closed §6 allow-list, `list[str]` argv
   only, never `shell=True`, and never construct a filesystem path from client
   input.
+### Full action parity, and the confirm that pays for it
+
+**Amended 2026-07-19.** The mirror exposes the box's **complete** action set,
+including `reboot`, `shutdown` and AIS transmit. Every one of them is already
+reachable by a finger on the panel, so this satisfies §0's Tier-1 rule as
+written — the web adds no action the box did not already offer.
+
+It does, however, change *who can reach them*. A tap requires standing at the
+box; a `POST` requires only being on the LAN, and this service has no auth.
+Two consequences are accepted deliberately:
+
+1. **Destructive actions are confirm-guarded on the web even where the panel
+   does not guard them.** `model_buttons()` marks such a button `confirm:
+   true`, and the box requires a second press within a short window (5 s)
+   before acting. Settings' Reboot/Shutdown fire on a *single* tap on the
+   panel — safe there, not safe over a network — so the web path is
+   deliberately **stricter** than the panel rather than merely equal to it.
+   The arm is scoped to one button on one screen and is dropped on navigation,
+   so a confirm can never be ambiguous about what it confirms.
+
+2. **AIS transmit is reachable remotely.** This is the sharpest edge in the
+   design: it emits RF. It is confirm-guarded, matching the panel's own 4 s
+   arm, and it remains subject to §0 — it constructs **no bus frames**, and it
+   is not a CAN TX path. But an unauthenticated LAN peer can key a
+   transmitter, and that is a posture decision, not an oversight.
+
+**Anyone putting this box on a network they do not control should read the two
+paragraphs above as the reason not to.** The no-auth posture below was
+acceptable when the mirror was diagnostics-only; with full action parity it is
+the single assumption the whole safety argument rests on.
+
 - The command surface constructs **no bus frames**, by §0's scope constraint.
   That is the security property that matters most here: a hostile actor on the
   LAN can navigate the diagnostics UI and can not transmit on the vehicle bus,

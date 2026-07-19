@@ -241,6 +241,24 @@ class PomodoroScreen(Screen):
             {"label": "COMPLETED", "value": str(self.completed), "state": None},
         ]
 
+
+    def model_buttons(self):
+        return [
+            {"id": "toggle", "label": "HOLD" if self.running else "START",
+             "enabled": True, "confirm": False},
+            {"id": "reset", "label": "RESET", "enabled": True, "confirm": True},
+            {"id": "skip", "label": "SKIP", "enabled": True, "confirm": False},
+        ]
+
+    def handle_button(self, bid):
+        if bid == "toggle":
+            self._toggle(); return True
+        if bid == "reset":
+            self._reset(); return True
+        if bid == "skip":
+            self._skip(); return True
+        return False
+
     def draw_content(self, d, th):
         w = self.app.w
         self._btns = {}

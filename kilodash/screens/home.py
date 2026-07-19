@@ -97,7 +97,8 @@ class LauncherScreen(Screen):
                 # dimmed-but-badged, which contradicts itself.
                 "badge": "lit" if (s.device_key and present) else None,
             })
-        return {"kind": "home", "tiles": tiles}
+        return {"kind": "home", "tiles": tiles,
+                "buttons": self.model_buttons()}
 
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h

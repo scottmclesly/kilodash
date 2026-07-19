@@ -106,6 +106,37 @@ class SettingsScreen(Screen):
                              "value": str(spec.get("value")), "state": None})
         return rows
 
+
+    def model_buttons(self):
+        """Power actions. The PANEL fires these on a single tap with no guard
+        at all — safe there, because tapping requires standing at the box. Over
+        an unauthenticated LAN it is not, so all three are confirm-guarded on
+        the web. That asymmetry is deliberate and recorded in §10."""
+        return [
+            {"id": "restart_ui", "label": "RESTART UI", "enabled": True,
+             "confirm": True},
+            {"id": "reboot", "label": "REBOOT", "enabled": True,
+             "confirm": True},
+            {"id": "shutdown", "label": "SHUTDOWN", "enabled": True,
+             "confirm": True},
+            {"id": "calibrate", "label": "CALIBRATE TOUCH", "enabled": True,
+             "confirm": False},
+        ]
+
+    def handle_button(self, bid):
+        cmds = {
+            "restart_ui": ["sudo", "systemctl", "restart", "kilodash"],
+            "reboot": ["sudo", "reboot"],
+            "shutdown": ["sudo", "poweroff"],
+        }
+        if bid in cmds:
+            self._power(cmds[bid])
+            return True
+        if bid == "calibrate":
+            self.app.open_calibration()
+            return True
+        return False
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         top = HEADER_H

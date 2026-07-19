@@ -182,6 +182,24 @@ class TablesScreen(Screen):
                          "value": f"{int(self.idle_secs)}S", "state": None})
         return rows
 
+
+    def model_buttons(self):
+        """`power` stops/starts the converter service. Stop is confirmed here
+        even though the panel does not confirm it, for the same reason the
+        rest of the destructive set is (§10): a POST is not a physical tap."""
+        up = getattr(self.web, "state", None) == webapp.UP
+        return [{"id": "power", "label": "STOP" if up else "START",
+                 "enabled": True, "confirm": bool(up)}]
+
+    def handle_button(self, bid):
+        if bid == "power":
+            if getattr(self.web, "state", None) == webapp.UP:
+                self.web.stop()
+            else:
+                self.web.launch()
+            return True
+        return False
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         self._btns = {}

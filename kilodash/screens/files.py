@@ -319,6 +319,43 @@ class FilesScreen(Screen):
              "state": "fault" if bad else None},
         ]
 
+
+    def model_buttons(self):
+        """The panel gates these by storing None in the hit-box during draw;
+        handle_button never hit-tests, so the gates are restated here."""
+        busy = self._busy()
+        todo = [n for n, _ in (self.files or []) if n not in (self.on_stick or ())]
+        return [
+            {"id": "eject", "label": "EJECT" if self.mounted else "MOUNT",
+             "enabled": bool(self.parts) and not busy, "confirm": False},
+            {"id": "offload_all", "label": "OFFLOAD ALL",
+             "enabled": bool(self.rw) and bool(todo) and not busy,
+             "confirm": False},
+            {"id": "tables_import", "label": "IMPORT TABLES",
+             "enabled": bool(self.mounted) and not busy, "confirm": False},
+            {"id": "tables_export", "label": "EXPORT TABLES",
+             "enabled": bool(self.rw) and not busy, "confirm": False},
+        ]
+
+    def handle_button(self, bid):
+        # _eject()/_start() re-guard busy, mounted and read-only internally
+        # and toast on refusal, so routing straight to them is safe.
+        if bid == "eject":
+            self._eject(); return True
+        if bid == "offload_all":
+            todo = [n for n, _ in (self.files or [])
+                    if n not in (self.on_stick or ())]
+            if todo:
+                self._start(_copy_captures, todo, label="OFFLOAD ALL")
+            return True
+        if bid == "tables_import":
+            self._start(_import_tables, label="IMPORT TABLES", writes=False)
+            return True
+        if bid == "tables_export":
+            self._start(_export_tables, label="EXPORT TABLES")
+            return True
+        return False
+
     def draw_content(self, d, th):
         w, h = self.app.w, self.app.h
         self._btns = {}
