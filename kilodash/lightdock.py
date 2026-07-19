@@ -511,7 +511,7 @@ class LightDockSync:
         # model (WEB-PROTOCOL.md §4.5). The panel infers phase from the newest
         # log line; the mirror needs it as a field, and `hello` already
         # carries the device info — it was previously parsed and discarded.
-        self.phase = "idle"             # idle|hello|clock|tables|logs|done|error
+        self.phase = "idle"             # idle|hello|clock|push|pull|done|error
         self.info = None                # parsed HELLO: product, fw_version, …
         self.counts = {"tables_pushed": 0, "tables_skipped": 0,
                        "tables_failed": 0, "logs_pulled": 0,
@@ -563,10 +563,10 @@ class LightDockSync:
             elif not info["sd_present"]:
                 self._log("tables skipped, logs skipped — no SD in Light")
             else:
-                self.phase = "tables"
+                self.phase = "push"
                 self._sync_tables()
                 if self.pull_logs:
-                    self.phase = "logs"
+                    self.phase = "pull"
                     self._sync_logs()
                 else:
                     self._log("logs: auto-pull is off")

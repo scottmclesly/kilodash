@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>SCOTTINA · WEB MIRROR</title>
+<!--
+  Scottina Web Mirror — presentation per To-DoLists/WEB-UI-DESIGN.md.
+  Data contract is To-DoLists/WEB-PROTOCOL.md; if the two disagree, the
+  protocol wins and this file is the bug.
+
+  NO EXTERNAL REQUESTS. No webfont, no CDN, no analytics. Scottina is a
+  diagnostics box that has to work off-grid, and a font CDN is a hard
+  dependency on the one thing that may not be there (WEB-UI-DESIGN §3).
+-->
+<style>
+  /* Theme tokens are placeholders only — the real palette arrives in
+     Hello.theme and is written over these at runtime (WEB-UI-DESIGN §2).
+     Never hardcode a phosphor colour anywhere below this block. */
+  :root{
+    --bg:rgb(0,9,3); --card:rgb(3,26,10); --card-hi:rgb(8,46,18);
+    --fg:rgb(51,245,70); --muted:rgb(0,150,40); --accent:rgb(130,255,120);
+    --ok:rgb(51,235,80); --warn:rgb(255,190,40); --bad:rgb(255,75,60);
+    /* Squared industrial monospace, system stack. DejaVu Sans Mono is
+       present on the box (it is what the panel itself renders with), so
+       both surfaces share a face without shipping a font file. */
+    --face:"DejaVu Sans Mono","Liberation Mono",ui-monospace,
+           "Cascadia Mono","Consolas",monospace;
+    --scan:.28;          /* scanline strength, dialled down by §11 guard */
+    --bloom:.55;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--fg); font-family:var(--face);
+    display:flex; align-items:center; justify-content:center; padding:12px;
+    -webkit-font-smoothing:none; overflow:hidden;
+  }
+
+  /* ---- the instrument frame (§4) ---- */
+  #instrument{
+    width:min(460px,100%); height:min(820px,97vh);
+    background:var(--bg); position:relative;
+    display:flex; flex-direction:column;
+    border:1px solid var(--card-hi);
+  }
+  /* Landscape/laptop: keep it a centred console with room to grow a
+     right-hand rail later, so Tier 2 does not force a redesign (§10). */
+  @media (min-width:900px) and (orientation:landscape){
+    #instrument{ width:min(760px,100%); height:min(680px,94vh) }
+  }
+  #instrument::after{      /* scanlines */
+    content:""; position:absolute; inset:0; pointer-events:none; z-index:40;
+    background:repeating-linear-gradient(0deg,
+      rgba(0,0,0,0) 0 2px, rgba(0,0,0,var(--scan)) 2px 3px);
+    mix-blend-mode:multiply;
+  }
+  #instrument::before{     /* vignette */
+    content:""; position:absolute; inset:0; pointer-events:none; z-index:41;
+    background:radial-gradient(120% 90% at 50% 40%,
+      rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%);
+  }
+  .bloom{ text-shadow:0 0 4px currentColor, 0 0 1px currentColor;
+          opacity:1; filter:saturate(1) }
+
+  /* ---- stale link (§6): the whole instrument, never modal ---- */
+  #instrument.stale .panel,
+  #instrument.stale .strip{ filter:saturate(.35) contrast(.8) brightness(.9) }
+  #instrument.stale{ animation:breathe 2s ease-in-out infinite }
+  @keyframes breathe{ 0%,100%{filter:brightness(1)} 50%{filter:brightness(.82)} }
+
+  /* ---- header ---- */
+  .strip{ background:var(--card-hi); position:relative; z-index:10 }
+  header.strip{
+    display:flex; align-items:center; gap:10px; padding:7px 12px;
+    font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+    border-bottom:1px solid var(--card); flex-wrap:nowrap; overflow:hidden;
+  }
+  header .dev{ color:var(--fg); white-space:nowrap }
+  header .ver, header .thm{ color:var(--muted); white-space:nowrap }
+  header .spacer{ flex:1 }
+  .cursor{ width:8px; height:13px; background:var(--fg); display:inline-block;
+    animation:blink 1.1s steps(1) infinite; flex:none }
+  @keyframes blink{ 50%{opacity:0} }
+  .lozenge{ display:none; align-items:center; gap:6px; padding:2px 8px;
+    border:1px solid currentColor; font-size:10px; letter-spacing:.14em;
+    white-space:nowrap; flex:none }
+  .lozenge.on{ display:flex }
+  .lozenge.link{ color:var(--ok) }
+  .lozenge.holding{ color:var(--warn); animation:pulse 1.4s ease-in-out infinite }
+  @keyframes pulse{ 50%{opacity:.4} }
+  .dot{ width:7px;height:7px;background:currentColor;border-radius:50%;flex:none }
+
+  /* ---- nav band ---- */
+  nav.strip{ display:flex; align-items:center; background:var(--card);
+    border-bottom:1px solid var(--card-hi); font-size:11px; letter-spacing:.12em }
+  .back{ padding:9px 14px; border-right:1px solid var(--card-hi); cursor:pointer;
+    color:var(--muted); text-transform:uppercase; user-select:none;
+    background:none; border-top:0; border-left:0; border-bottom:0;
+    font-family:var(--face); font-size:11px; letter-spacing:.12em }
+  .back:hover{ color:var(--fg) }
+  .back:active{ background:var(--card-hi); color:var(--accent) }
+  .back:focus-visible{ outline:2px solid var(--accent); outline-offset:-2px }
+  .back[disabled]{ opacity:.3; pointer-events:none }
+  .crumb{ padding:6px 12px; text-transform:uppercase; color:var(--fg) }
+  .crumb .sep{ color:var(--muted); margin:0 8px }
+
+  /* ---- content panel + registration brackets ---- */
+  .panelwrap{ flex:1; position:relative; padding:14px; min-height:0 }
+  .bracket{ position:absolute; width:16px; height:16px; z-index:8 }
+  .bracket.tl{ top:6px; left:6px; border-top:2px solid var(--fg); border-left:2px solid var(--fg) }
+  .bracket.tr{ top:6px; right:6px; border-top:2px solid var(--fg); border-right:2px solid var(--fg) }
+  .bracket.bl{ bottom:6px; left:6px; border-bottom:2px solid var(--fg); border-left:2px solid var(--fg) }
+  .bracket.br{ bottom:6px; right:6px; border-bottom:2px solid var(--fg); border-right:2px solid var(--fg) }
+  .panel{ position:absolute; inset:14px; overflow-y:auto; overflow-x:hidden;
+    z-index:5; -webkit-overflow-scrolling:touch }
+  .panel::-webkit-scrollbar{ width:6px }
+  .panel::-webkit-scrollbar-thumb{ background:var(--card-hi) }
+  .bootin{ animation:bootin .18s steps(2) }
+  @keyframes bootin{ from{opacity:.2; filter:brightness(2)} to{opacity:1} }
+
+  .phead{ font-size:12px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--fg); padding-bottom:8px; border-bottom:1px solid var(--card-hi);
+    margin-bottom:10px; display:flex; justify-content:space-between; gap:10px }
+  .phead .sub{ color:var(--muted); font-size:10px; text-align:right }
+
+  /* ---- launcher (§7.1) ---- */
+  .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:10px }
+  .tile{ border:1px solid var(--card-hi); background:var(--card); aspect-ratio:1;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:10px; cursor:pointer; position:relative; font-family:var(--face);
+    color:var(--fg); min-height:96px }
+  .tile:hover{ border-color:var(--fg) }
+  .tile:active{ background:var(--card-hi) }
+  .tile:focus-visible{ outline:2px solid var(--accent); outline-offset:-2px }
+  .tile svg{ width:46px; height:46px; stroke:var(--fg); fill:none;
+    stroke-width:5; stroke-linecap:square }
+  .tile .tname{ font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    text-align:center; padding:0 4px }
+  .tile.absent{ pointer-events:none }
+  .tile.absent svg{ stroke:var(--muted) }
+  .tile.absent .tname{ color:var(--muted) }
+  .tile .badge{ position:absolute; top:6px; right:6px; width:8px; height:8px;
+    background:var(--ok) }
+
+  /* ---- tables ---- */
+  /* A wide table SCROLLS, it never clips. The panel is overflow-x:hidden, so
+     without this a column silently disappears off the right edge — and a
+     partial table that reads as a whole one is the exact failure the
+     truncation banner exists to prevent (§7.2). */
+  .tablewrap{ overflow-x:auto; overflow-y:hidden; margin:0 -2px }
+  .tablewrap::-webkit-scrollbar{ height:5px }
+  .tablewrap::-webkit-scrollbar-thumb{ background:var(--card-hi) }
+  table{ width:100%; border-collapse:collapse; font-size:11px }
+  /* Tight horizontal padding: the canbus table carries six columns including
+     8 bytes of hex, and at phone width the last column otherwise runs off the
+     edge. It scrolls either way (.tablewrap), but fitting is better. */
+  th{ text-align:left; color:var(--muted); font-weight:normal; letter-spacing:.04em;
+    text-transform:uppercase; padding:4px 4px; border-bottom:1px solid var(--card-hi);
+    position:sticky; top:0; background:var(--bg); white-space:nowrap }
+  td{ padding:4px 4px; border-bottom:1px solid var(--card);
+    font-variant-numeric:tabular-nums }
+  td.r,th.r{ text-align:right }
+  .hex{ white-space:nowrap }
+  .byte{ display:inline-block; padding:0 1px; transition:color .45s, background .45s }
+  .byte.hot{ color:var(--accent); background:color-mix(in srgb,var(--accent) 14%,transparent);
+    transition:none }
+  .cell.hot{ color:var(--accent); transition:none }
+  .cell{ transition:color .45s }
+  tr.alert td{ color:var(--bad) }
+  tr.alert{ animation:rowflash 1.1s ease-out }
+  @keyframes rowflash{ 0%{background:color-mix(in srgb,var(--bad) 35%,transparent)}
+                       100%{background:transparent} }
+  .val-ok{color:var(--ok)} .val-warn{color:var(--warn)}
+  .val-caution{color:var(--warn)} .val-bad{color:var(--bad)} .val-fault{color:var(--bad)}
+  .dim{ color:var(--muted) }
+
+  /* ---- segmented meter (§7.2) ---- */
+  .meter{ display:flex; gap:2px; align-items:center; margin:2px 0 12px; flex-wrap:wrap }
+  .meter .seg{ width:8px; height:14px; background:var(--card-hi); flex:none }
+  .meter .seg.lit{ background:var(--fg) }
+  .meter .seg.lit.hi{ background:var(--warn) }
+  .meter .mlabel{ margin-left:10px; font-size:10px; color:var(--muted); letter-spacing:.1em }
+
+  .statline{ display:flex; gap:14px; font-size:10px; color:var(--muted);
+    letter-spacing:.1em; text-transform:uppercase; margin-bottom:10px; flex-wrap:wrap }
+  .statline b{ color:var(--fg); font-weight:normal }
+  .statline .up{ color:var(--ok) } .statline .bad{ color:var(--bad) }
+  .trunc{ color:var(--warn); border:1px solid var(--warn); padding:3px 8px;
+    font-size:10px; letter-spacing:.12em; margin-top:8px; text-align:center }
+
+  /* ---- generic bands + buttons (§7.5) ---- */
+  .band{ display:flex; justify-content:space-between; gap:12px; padding:7px 6px;
+    border-bottom:1px solid var(--card); font-size:12px }
+  .band .lbl{ color:var(--muted); letter-spacing:.1em; text-transform:uppercase }
+  .band .v{ font-variant-numeric:tabular-nums; text-align:right }
+  .btns{ display:flex; gap:8px; margin-top:14px; flex-wrap:wrap }
+  .btn{ border:1px solid var(--fg); color:var(--fg); background:transparent;
+    padding:10px 16px; font-family:var(--face); font-size:11px; letter-spacing:.14em;
+    text-transform:uppercase; cursor:pointer; min-height:44px }
+  .btn:hover{ background:var(--card-hi) }
+  .btn:active{ background:var(--accent); color:var(--bg) }
+  .btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px }
+  .btn[disabled]{ color:var(--muted); border-color:var(--card-hi); pointer-events:none }
+  .note{ margin-top:16px; font-size:10px; color:var(--muted); letter-spacing:.06em;
+    text-transform:uppercase; line-height:1.6 }
+
+  /* ---- lightdock (§7.4) ---- */
+  .stages{ display:flex; margin:6px 0 14px; font-size:9px; letter-spacing:.08em }
+  .stage{ flex:1; text-align:center; padding:6px 2px; border:1px solid var(--card-hi);
+    border-right:0; color:var(--muted); text-transform:uppercase }
+  .stage:last-child{ border-right:1px solid var(--card-hi) }
+  .stage.done{ background:var(--card-hi); color:var(--fg) }
+  .stage.active{ background:var(--fg); color:var(--bg) }
+  .stage.err{ background:var(--bad); color:var(--bg) }
+  .prog{ height:14px; border:1px solid var(--card-hi); position:relative; margin:4px 0 2px }
+  .prog .fill{ position:absolute; inset:0; width:0; background:var(--fg);
+    transition:width .3s steps(12) }
+  .proglabel{ font-size:10px; color:var(--muted); letter-spacing:.1em;
+    margin-bottom:14px; text-transform:uppercase }
+  .log{ border-top:1px solid var(--card-hi); padding-top:8px; font-size:10.5px;
+    line-height:1.7 }
+  .log .ln{ display:flex; gap:8px }
+  .log .t{ color:var(--muted); flex:none }
+  .log .info{color:var(--fg)} .log .warn{color:var(--warn)} .log .error{color:var(--bad)}
+
+  /* ---- footer ---- */
+  footer.strip{ display:flex; align-items:center; gap:10px; padding:5px 12px;
+    font-size:10px; letter-spacing:.1em; color:var(--muted);
+    border-top:1px solid var(--card); text-transform:uppercase }
+  footer .spacer{flex:1}
+  footer b{ color:var(--fg); font-weight:normal }
+  .reject{ display:none; color:var(--bg); padding:2px 10px; font-weight:bold;
+    letter-spacing:.14em;
+    background:repeating-linear-gradient(45deg,
+      var(--warn) 0 8px, var(--bg) 8px 16px) }
+  .reject.show{ display:block; animation:rj 2.6s ease-out forwards }
+  @keyframes rj{ 0%,70%{opacity:1} 100%{opacity:0} }
+
+  .empty{ color:var(--muted); font-size:11px; letter-spacing:.1em;
+    text-transform:uppercase; padding:20px 4px; text-align:center }
+
+  /* ---- §11 quality floor: motion goes, legibility stays ---- */
+  @media (prefers-reduced-motion:reduce){
+    *{ animation:none !important }
+    .byte,.cell,.prog .fill{ transition:none !important }
+    #instrument.stale .panel, #instrument.stale .strip{
+      filter:saturate(.35) contrast(.85) brightness(.85) }
+    :root{ --scan:.12 }
+  }
+</style>
+</head>
+<body>
+<div id="instrument">
+  <header class="strip">
+    <span class="dev bloom" id="dev">SCOTTINA-PRIME</span>
+    <span class="ver" id="ver"></span>
+    <span class="thm" id="thm"></span>
+    <span class="spacer"></span>
+    <span class="cursor" aria-hidden="true"></span>
+    <span class="lozenge link bloom" id="loz-link"><span class="dot"></span>LINK</span>
+    <span class="lozenge holding bloom on" id="loz-hold"><span class="dot"></span>HOLDING</span>
+  </header>
+
+  <nav class="strip">
+    <button class="back" id="back" disabled>&#9664; BACK</button>
+    <span class="crumb bloom" id="crumb">HOME</span>
+  </nav>
+
+  <div class="panelwrap">
+    <span class="bracket tl"></span><span class="bracket tr"></span>
+    <span class="bracket bl"></span><span class="bracket br"></span>
+    <div class="panel" id="panel"></div>
+  </div>
+
+  <footer class="strip">
+    <span class="reject" id="reject">INPUT REJECTED</span>
+    <span class="spacer"></span>
+    <span>SEQ <b id="f-seq">—</b> · REV <b id="f-rev">—</b></span>
+  </footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

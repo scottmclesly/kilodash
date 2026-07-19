@@ -33,3 +33,5 @@ tables/*
 To-DoLists/*
 !To-DoLists/*-PROTOCOL.md
 !To-DoLists/*-vectors.json
+!To-DoLists/*-DESIGN.md
+!To-DoLists/*-reference.html
