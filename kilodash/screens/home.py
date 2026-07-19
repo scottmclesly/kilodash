@@ -89,7 +89,13 @@ class LauncherScreen(Screen):
                 "title": s.title,
                 "glyph": s.glyph,
                 "available": bool(present and s.available()),
-                "badge": "lit" if s.device_key else None,
+                # "lit" means the DEVICE IS PRESENT, not merely that this
+                # screen is a device screen. The panel gets that for free —
+                # it only draws tiles whose device is present — but the web
+                # deliberately shows absent tiles dimmed, so the badge has to
+                # be gated on presence explicitly or an absent screen renders
+                # dimmed-but-badged, which contradicts itself.
+                "badge": "lit" if (s.device_key and present) else None,
             })
         return {"kind": "home", "tiles": tiles}
 

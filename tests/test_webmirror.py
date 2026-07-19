@@ -200,6 +200,34 @@ class CommandEnvelope(Case):
         self.assertEqual(self.post({"action": "home"}).status_code, 503)
 
 
+class Routing(Case):
+    """A wrong path must SAY it is wrong."""
+
+    def test_unknown_api_path_404s_instead_of_serving_the_spa(self):
+        """The SPA fallback used to swallow /api/* too, so a typo returned
+        200 + HTML. That reads as "the endpoint works but sends the wrong
+        thing" and cost a real debugging cycle when a wrong stream path
+        looked like a broken client."""
+        for path in ("/api/nonsense", "/api/events", "/api/streams"):
+            with self.subTest(path=path):
+                r = self.client.get(path)
+                self.assertEqual(r.status_code, 404)
+                self.assertEqual(r.mimetype, "application/json")
+
+    def test_real_api_paths_still_route(self):
+        self.handshake()
+        self.assertEqual(self.client.get("/api/state").status_code, 200)
+        self.assertEqual(self.client.post("/api/input",
+                                          json={"action": "home"}).status_code,
+                         202)
+
+    def test_non_api_paths_still_fall_back_to_the_spa(self):
+        """A non-API path may legitimately be a client-side route."""
+        r = self.client.get("/some/client/route")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.mimetype.startswith("text/html"))
+
+
 class ModelMaintenance(Case):
     def test_snapshot_populates_state(self):
         self.handshake(tile="can-bus",

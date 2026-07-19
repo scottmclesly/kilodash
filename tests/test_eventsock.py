@@ -412,5 +412,79 @@ class NeverHarmsThePanel(EmitterCase):
         self.assertEqual(self.em.dropped, dropped + 1)
 
 
+class HomeModelInvariants(unittest.TestCase):
+    """The launcher model against the real LauncherScreen — the one screen
+    whose model encodes a rule that is easy to get subtly wrong."""
+
+    def setUp(self):
+        """Exercises LauncherScreen.model() against stub screens. The rule
+        under test lives in the launcher, not in the individual screens, and
+        instantiating all 22 real ones would need a whole App (config, CAN
+        blocks, hardware probes) to test a dict comprehension."""
+        from kilodash.screens.home import LauncherScreen
+
+        present = {"can"}          # pretend exactly one device is plugged in
+
+        class FakeDevices:
+            def has(self, key):
+                return key in present
+
+            def refresh(self, force=False):
+                pass
+
+        class Stub:
+            """A screen as the launcher sees it."""
+            def __init__(self, tid, title, glyph=None, device_key=None):
+                self.tile_id, self.title = tid, title
+                self.glyph, self.device_key = glyph, device_key
+
+            def available(self):
+                return True
+
+        class StubApp:
+            def __init__(self):
+                self.devices = FakeDevices()
+                self.theme = FakeTheme()
+                self.screens = []
+
+        self.app = StubApp()
+        self.launcher = LauncherScreen.__new__(LauncherScreen)
+        self.launcher.app = self.app
+        self.app.screens = [
+            self.launcher,                                   # index 0
+            Stub('can-bus', 'CAN Bus', 'can', 'can'),        # device PRESENT
+            Stub('rtl-sdr', 'RTL-SDR', 'sdr', 'sdr'),        # device ABSENT
+            Stub('lan-scan', 'LAN Scan', 'lan'),             # not a device tile
+        ]
+
+    def test_badge_implies_available(self):
+        """`badge:"lit"` means THE DEVICE IS PRESENT, not merely that this is
+        a device screen. The panel gets that free (it only draws present
+        tiles); the web shows absent tiles dimmed, so an ungated badge would
+        render dimmed-and-badged, which contradicts itself."""
+        for t in self.launcher.model()["tiles"]:
+            if t["badge"] == "lit":
+                with self.subTest(tile=t["id"]):
+                    self.assertTrue(t["available"],
+                                    f"{t['id']} is badged present but marked "
+                                    f"unavailable")
+
+    def test_absent_device_tiles_are_listed_not_hidden(self):
+        """Hotplug-absent screens render dimmed, never vanish — the web must
+        show the same inventory the operator sees."""
+        tiles = self.launcher.model()["tiles"]
+        self.assertTrue(any(t["available"] is False for t in tiles),
+                        "expected at least one absent device tile")
+
+    def test_launcher_excludes_itself(self):
+        ids = {t["id"] for t in self.launcher.model()["tiles"]}
+        self.assertNotIn("home", ids, "the launcher must not list itself")
+
+    def test_every_tile_carries_a_wire_id(self):
+        for t in self.launcher.model()["tiles"]:
+            with self.subTest(tile=t.get("title")):
+                self.assertTrue(t.get("id"))
+
+
 if __name__ == "__main__":
     unittest.main()

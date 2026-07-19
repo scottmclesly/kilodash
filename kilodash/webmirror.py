@@ -392,8 +392,15 @@ def create_app(link):
     @app.route("/")
     @app.route("/<path:path>")
     def ui(path="index.html"):
-        """Serves the React bundle (Phase 3). Until it exists, a holding page
-        that is itself useful: it proves the stream works."""
+        """Serves the web bundle (kilodash/webui/), with an SPA fallback.
+
+        `/api/*` is EXCLUDED from that fallback and 404s properly. Serving the
+        SPA for an unknown API path means a typo returns 200 + HTML, which
+        reads as "the endpoint works but sends the wrong thing" — it cost a
+        real debugging cycle when a wrong stream path looked like a broken
+        client. A wrong path should say so."""
+        if path.startswith("api/"):
+            return jsonify(error=f"no such endpoint: /{path}"), 404
         full = os.path.join(STATIC_DIR, path)
         if os.path.isfile(full):
             return send_from_directory(STATIC_DIR, path)
