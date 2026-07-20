@@ -7,7 +7,7 @@ A fingertip control panel for a Raspberry Pi 5 running Kali Linux, driving a
 straight to a tap-driven dashboard — no keyboard, no mouse, no X server — and
 fronts your network, radio, bus, and web-app tooling as finger-sized tiles.
 
-<img width="1950" height="1463" alt="Scottina" src="https://github.com/user-attachments/assets/b9ee05b8-b0d5-4fcd-acc6-5dca8c2ebee6" />
+<img width="1600" height="1200" alt="Scottina-frames-1" src="https://github.com/user-attachments/assets/2db93d5f-e617-4b20-9af0-10634dca301e" />
 
 ## The gap it closes
 
