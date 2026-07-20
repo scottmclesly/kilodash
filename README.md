@@ -148,7 +148,7 @@ Fixed tiles are always shown. **Device tiles appear only while their dongle is
 plugged in** (hotplug, see `devices.py`) and carry a small green "live" badge.
 **Web-app tiles appear only once the app is installed.**
 
-<img width="1024" height="768" alt="fon" src="https://github.com/user-attachments/assets/fa66d421-1b2e-4607-9267-278d719a45c8" />
+<img width="1600" height="1200" alt="fon" src="https://github.com/user-attachments/assets/434ca5df-b57e-40ff-9594-bf1f20f0a06d" />
 
 
 ## Screens
