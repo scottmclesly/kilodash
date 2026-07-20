@@ -185,6 +185,8 @@ plugged in** (hotplug, see `devices.py`) and carry a small green "live" badge.
 
 ### CanTick — CAN over WiFi
 
+<img width="1149" height="1098" alt="CanTick" src="https://github.com/user-attachments/assets/e6598eca-d1c1-4f67-84db-c1c8e83e8986" />
+
 CanTick is a small ESP32 box that clamps onto a CAN bus somewhere Scottina
 isn't, and tunnels it over WiFi. The model is deliberately boring: **it's just
 `slcan0`**. While the CAN screen is open, Scottina listens on TCP 29536; a
