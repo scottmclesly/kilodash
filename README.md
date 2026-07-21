@@ -2,12 +2,44 @@
 
 **A pocket-sized front panel for the diagnostic tools you already use.**
 
-A fingertip control panel for a Raspberry Pi 5 running Kali Linux, driving a
-3.5" ILI9486 SPI touchscreen (480×320, ADS7846 resistive touch). It boots
-straight to a tap-driven dashboard — no keyboard, no mouse, no X server — and
-fronts your network, radio, bus, and web-app tooling as finger-sized tiles.
-
 <img alt="Scottina-frames-2" src="https://github.com/user-attachments/assets/06b5e760-ba14-402d-af01-5d1873433ebe" />
+
+A pocket-sized touchscreen front panel for the bench diagnostic tools you already use — a Pi 5 + 3.5" screen that boots straight to a tap-driven tile grid, strips each tool down to the two controls and two numbers you actually watch, and skips the other 90%. Diagnostics only — not a Flipper, not a Marauder, not a wardriving toy.
+
+## Built-in screens (always present):
+
+- LAN Scan — intent-based network diagnostics: Discover / Ports / Services / Identify modes, no raw-flag entry
+- Wi-Fi — scan, connect, on-screen keyboard for secured networks; headless join with the IP shown in the header to SSH right in
+- Pi Health — temp, CPU, memory, disk, uptime, Wi-Fi signal, throttling
+- Tables — on-demand converter service + decode-table store mirror
+- Pomodoro — background focus/break timer with app-wide toasts
+- Settings — every tunable as a card, power actions, touch calibration
+- MicroKVM — off-grid command-plane mirror
+
+## Hotplug device screens (tile appears only while the dongle is plugged in):
+
+- CAN Bus — bring-up, bitrate autodetect, live frame counter + frames/s, byte-level change detection, value-match alerting, candump logging
+- NMEA2000 — PGN table-driven decode, fast-packet reassembly, range-exit and appearance alerts
+- RTL-SDR — frequency scan, rtl_433 ISM decode/identify, IQ capture (RX-only)
+- Wi-Fi Sniff — passive airodump-ng monitor capture, uplink watchdog, no injection
+- I2C Scan — i2cdetect with best-guess names for responding addresses
+- Serial — read-only live view of a USB-serial port at a chosen baud
+- Logic Analyzer — FX2LP + sigrok-cli capture
+- GPS — PA1616S fix/status
+- Files — USB offload of capture logs + DBC/NMEA decode-table exchange
+- Light Dock — Scottina Light auto-sync on dock: clock push, decode-table push, black-box log pull
+
+## Web-app launch terminals (launches the app, confirms the port is really serving, shows URL:port):
+
+Kismet, Node-RED (4 feedback fields + 4 assignable buttons), AIS (AIS-catcher RX), Signal K (helm-glance vitals + live heartbeat)
+
+## Under the hood:
+
+- Boots straight to the tile grid — no keyboard, mouse, or X server
+- Renders directly to /dev/fb0, reads touch from the ADS7846 evdev node — nothing that can lose the DRM device
+- Hotplug detection drives tile visibility; the Pi's own IP is always in the header
+- Dirty-rect blits + per-screen tick rates keep live screens smooth (~20 Hz) while everything else idles at ~1 Hz
+- Semiotic-Standard-inspired pictograms so tiles read at arm's length
 
 ## The gap it closes
 
