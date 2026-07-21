@@ -7,7 +7,7 @@ A fingertip control panel for a Raspberry Pi 5 running Kali Linux, driving a
 straight to a tap-driven dashboard — no keyboard, no mouse, no X server — and
 fronts your network, radio, bus, and web-app tooling as finger-sized tiles.
 
-<img width="1600" height="1200" alt="Scottina-frames-2" src="https://github.com/user-attachments/assets/06b5e760-ba14-402d-af01-5d1873433ebe" />
+<img alt="Scottina-frames-2" src="https://github.com/user-attachments/assets/06b5e760-ba14-402d-af01-5d1873433ebe" />
 
 ## The gap it closes
 
@@ -148,7 +148,7 @@ Fixed tiles are always shown. **Device tiles appear only while their dongle is
 plugged in** (hotplug, see `devices.py`) and carry a small green "live" badge.
 **Web-app tiles appear only once the app is installed.**
 
-<img width="1600" height="1200" alt="fon" src="assets/home-tiles.gif" />
+<img alt="fon" src="assets/home-tiles.gif" />
 
 
 ## Screens
@@ -185,7 +185,7 @@ plugged in** (hotplug, see `devices.py`) and carry a small green "live" badge.
 
 ### CanTick — CAN over WiFi
 
-<img width="1149" height="966" alt="CanTick" src="https://github.com/user-attachments/assets/0270ee6f-9733-46e5-8335-bbeafb21238c" />
+<img alt="CanTick" src="https://github.com/user-attachments/assets/0270ee6f-9733-46e5-8335-bbeafb21238c" />
 
 CanTick is a small ESP32 box that clamps onto a CAN bus somewhere Scottina
 isn't, and tunnels it over WiFi. The model is deliberately boring: **it's just
